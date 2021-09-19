@@ -47,24 +47,7 @@ def normalize_grad_(x_grad, norm_type, eps=1e-8):
             raise NotImplementedError("not implemented.")
     return x_grad
 
-def get_pgd_loss_fn_by_name(loss_fn):
-    if loss_fn is None:
-        loss_fn=torch.nn.CrossEntropyLoss(reduction="sum")
-    elif isinstance(loss_fn, str):
-        if loss_fn == 'none' or loss_fn == 'ce':
-            loss_fn=torch.nn.CrossEntropyLoss(reduction="sum")
-        elif loss_fn == 'bce':
-            #loss_fn=torch.nn.BCEWithLogitsLoss(reduction="sum")
-            loss_fn=binary_cross_entropy_with_logits
-        elif loss_fn =='logit_margin_loss_binary' or loss_fn == 'lmb':
-            loss_fn=logit_margin_loss_binary
-        elif loss_fn == 'logit_margin_loss' or loss_fn == 'lm':
-            loss_fn=logit_margin_loss
-        elif loss_fn == 'soft_logit_margin_loss' or loss_fn == 'slm':
-            loss_fn=soft_logit_margin_loss
-        else:
-            raise NotImplementedError("not implemented.")
-    return loss_fn
+
 #%%
 def clip_norm_(noise, norm_type, norm_max):
     if not isinstance(norm_max, torch.Tensor):
@@ -127,17 +110,13 @@ def pgd_attack(model, X, Y, noise_norm, norm_type, max_iter, step,
                rand_init_norm=None, rand_init_Xn=None,
                targeted=False, clip_X_min=0, clip_X_max=1,
                refine_Xn_max_iter=10,
-               Xn1_equal_X=False,
-               Xn2_equal_Xn=False,
+               Xn1_equal_X=False, Xn2_equal_Xn=False,
                stop_near_boundary=False,
                stop_if_label_change=False,
                stop_if_label_change_next_step=False,
                use_optimizer=False,
-               loss_fn=None,
+               run_model=None, classify_model_output=None,               
                model_eval_attack=False):
-    #only apply pgd_attack to correctly classified samples
-    #-------------------------------------------
-    loss_fn=get_pgd_loss_fn_by_name(loss_fn)
     #-------------------------------------------
     train_mode=model.training# record the mode
     if model_eval_attack == True and train_mode == True:
@@ -155,9 +134,10 @@ def pgd_attack(model, X, Y, noise_norm, norm_type, max_iter, step,
     else:
         raise ValueError('invalid input')
     #-----------------
-    Xn1=X.detach().clone() # about to across decision boundary
-    Xn2=X.detach().clone() # just across decision boundary
-    Ypn_old=Y # X is correctly classified
+    Xn1=X.detach().clone()
+    Xn2=X.detach().clone()
+    Ypn_old_e_Y=torch.ones(Y[0].shape[0], dtype=torch.bool, device=Y[0].device)
+    Ypn_old_ne_Y=~Ypn_old_e_Y
     #-----------------
     noise=(Xn-X).detach()
     if use_optimizer == True:
@@ -165,15 +145,12 @@ def pgd_attack(model, X, Y, noise_norm, norm_type, max_iter, step,
     #-----------------
     for n in range(0, max_iter+1):
         Xn = Xn.detach()
-        Xn.requires_grad = True
-        Zn, Ypn=run_model(model, Xn)
-        loss = loss_fn(Zn, Y)
-        Ypn_e_Y=(Ypn==Y)
-        Ypn_ne_Y=(Ypn!=Y)
-        Ypn_old_e_Y=(Ypn_old==Y)
-        Ypn_old_ne_Y=(Ypn_old!=Y)
+        Xn.requires_grad = True        
+        Ypn, loss=run_model(model, Xn, Y, return_loss=True, reduction='sum')
+        Ypn_e_Y=classify_model_output(Ypn, Y)
+        Ypn_ne_Y=~Ypn_e_Y
         #---------------------------
-        #targeted attack, Y should be filled with targeted class label
+        #targeted attack, Y should be filled with targeted output
         if targeted == False:
             A=Ypn_e_Y
             A_old=Ypn_old_e_Y
@@ -185,11 +162,11 @@ def pgd_attack(model, X, Y, noise_norm, norm_type, max_iter, step,
             loss=-loss
         #---------------------------
         temp1=(A&A_old)&(advc<1)
-        Xn1[temp1]=Xn[temp1].data
+        Xn1[temp1]=Xn[temp1].data# last right and this right
         temp2=(B&A_old)&(advc<1)
-        Xn2[temp1]=Xn[temp1].data
-        Xn2[temp2]=Xn[temp2].data
-        advc[B]+=1
+        Xn2[temp1]=Xn[temp1].data# last right and this right
+        Xn2[temp2]=Xn[temp2].data# last right and this wrong
+        advc[B]+=1#
         #---------------------------
         if n < max_iter:
             #loss.backward() will update W.grad
@@ -203,18 +180,12 @@ def pgd_attack(model, X, Y, noise_norm, norm_type, max_iter, step,
                 noise = Xnew-X
             #---------------------
             clip_norm_(noise, norm_type, noise_norm)
-            Xn = torch.clamp(X+noise, clip_X_min, clip_X_max)
+            #Xn = torch.clamp(X+noise, clip_X_min, clip_X_max)
+            Xn = X+noise
             noise.data -= noise.data-(Xn-X).data
-            Ypn_old=Ypn
-        #---------------------------
-        #if n==0 or n ==max_iter:
-        #    loss_sum=logit_margin_loss(Zn, Y, reduction='sum')
-        #    print(loss.item(), loss_sum.item())
-    #print('pgd is done...................')
-    #---------------------------
-    #Zn1 = model(Xn1)
-    #Ypn1 = Zn1.data.max(dim=1)[1]
-    #print('Ypn1', (Ypn1==Y).sum().item(), Y.size(0))
+            #---------------------
+            Ypn_old_e_Y=Ypn_e_Y
+            Ypn_old_ne_Y=Ypn_ne_Y
     #---------------------------
     Xn_out = Xn.detach()
     if Xn1_equal_X:
@@ -224,51 +195,47 @@ def pgd_attack(model, X, Y, noise_norm, norm_type, max_iter, step,
     if stop_near_boundary == True:
         temp=advc>0
         if temp.sum()>0:
-            Xn_out[temp]=refine_Xn_onto_boundary(model, Xn1[temp], Xn2[temp], Y[temp], refine_Xn_max_iter)
+            Xn_out=refine_Xn_onto_boundary(model, Xn1, Xn2, Y, refine_Xn_max_iter, run_model, classify_model_output)
     elif stop_if_label_change == True:
         temp=advc>0
         if temp.sum()>0:
-            Xn_out[temp]=refine_Xn2_onto_boundary(model, Xn1[temp], Xn2[temp], Y[temp], refine_Xn_max_iter)
+            Xn_out=refine_Xn2_onto_boundary(model, Xn1, Xn2, Y, refine_Xn_max_iter, run_model, classify_model_output)
     elif stop_if_label_change_next_step == True:
         temp=advc>0
         if temp.sum()>0:
-            Xn_out[temp]=refine_Xn1_onto_boundary(model, Xn1[temp], Xn2[temp], Y[temp], refine_Xn_max_iter)
+            Xn_out=refine_Xn1_onto_boundary(model, Xn1, Xn2, Y, refine_Xn_max_iter, run_model, classify_model_output)
     #---------------------------
     if train_mode == True and model.training == False:
         model.train()
     #---------------------------
     return Xn_out, advc
-
-def refine_onto_boundary(model, Xn1, Xn2, Y, max_iter):
+#%%
+def refine_onto_boundary(model, Xn1, Xn2, Y, max_iter, run_model, classify_model_output):
 #note: Xn1 and Xn2 will be modified
     with torch.no_grad():
         Xn=(Xn1+Xn2)/2
         for k in range(0, max_iter):
-            Zn, Ypn=run_model(model, Xn)
-            Ypn_e_Y=Ypn==Y
-            Ypn_ne_Y=Ypn!=Y
+            Ypn=run_model(model, Xn, return_loss=False)            
+            Ypn_e_Y=classify_model_output(Ypn, Y)
+            Ypn_ne_Y=~Ypn_e_Y
             Xn1[Ypn_e_Y]=Xn[Ypn_e_Y]
             Xn2[Ypn_ne_Y]=Xn[Ypn_ne_Y]
             Xn=(Xn1+Xn2)/2
-            #if k==0 or k ==max_iter-1:
-            #    loss=logit_margin_loss(Zn, Y, reduction='sum_abs')
-            #    print(loss.item())
-        #print('refine done')
     return Xn, Xn1, Xn2
 #%%
-def refine_Xn_onto_boundary(model, Xn1, Xn2, Y, max_iter):
+def refine_Xn_onto_boundary(model, Xn1, Xn2, Y, max_iter, run_model, classify_model_output):
 #note: Xn1 and Xn2 will be modified
-    Xn, Xn1, Xn2=refine_onto_boundary(model, Xn1, Xn2, Y, max_iter)
+    Xn, Xn1, Xn2=refine_onto_boundary(model, Xn1, Xn2, Y, max_iter, run_model, classify_model_output)
     return Xn
 #%%
-def refine_Xn1_onto_boundary(model, Xn1, Xn2, Y, max_iter):
+def refine_Xn1_onto_boundary(model, Xn1, Xn2, Y, max_iter, run_model, classify_model_output):
 #note: Xn1 and Xn2 will be modified
-    Xn, Xn1, Xn2=refine_onto_boundary(model, Xn1, Xn2, Y, max_iter)
+    Xn, Xn1, Xn2=refine_onto_boundary(model, Xn1, Xn2, Y, max_iter, run_model, classify_model_output)
     return Xn1
 #%%
-def refine_Xn2_onto_boundary(model, Xn1, Xn2, Y, max_iter):
+def refine_Xn2_onto_boundary(model, Xn1, Xn2, Y, max_iter, run_model, classify_model_output):
 #note: Xn1 and Xn2 will be modified
-    Xn, Xn1, Xn2=refine_onto_boundary(model, Xn1, Xn2, Y, max_iter)
+    Xn, Xn1, Xn2=refine_onto_boundary(model, Xn1, Xn2, Y, max_iter, run_model, classify_model_output)
     return Xn2
 #%%
 
@@ -282,7 +249,7 @@ def repeated_pgd_attack(model, X, Y, noise_norm, norm_type, max_iter, step,
                         stop_if_label_change=False,
                         stop_if_label_change_next_step=False,
                         use_optimizer=False,
-                        loss_fn=None,
+                        run_model=None, classify_model_output=None,
                         model_eval_attack=False,
                         num_repeats=1):
     for m in range(0, num_repeats):
@@ -296,7 +263,7 @@ def repeated_pgd_attack(model, X, Y, noise_norm, norm_type, max_iter, step,
                                stop_if_label_change,
                                stop_if_label_change_next_step,
                                use_optimizer,
-                               loss_fn,
+                               run_model, classify_model_output,
                                model_eval_attack)
         if m == 0:
             Xn=Xm
@@ -305,7 +272,7 @@ def repeated_pgd_attack(model, X, Y, noise_norm, norm_type, max_iter, step,
             temp=advcm>0
             advc[temp]=advcm[temp]
             Xn[temp]=Xm[temp]
-    #--------
+    #-------- 
     return Xn, advc
 
 def get_loss_function(z_size, reduction='sum'):
@@ -364,7 +331,16 @@ def total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, off
         regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "none")
         return  regression_loss_x + regression_loss_y + logic_loss * lamb, regression_loss_x + regression_loss_y
   
-    
+def l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
+    loss_logic_fn = L1Loss
+    loss_regression_fn = L1Loss
+    # the loss for heatmap
+    logic_loss = loss_logic_fn(heatmap, guassian_mask, mask, reduction = "none")
+    # the loss for offset
+    regression_loss_ys = loss_regression_fn(regression_y, offset_y, mask, reduction = "none")
+    regression_loss_xs = loss_regression_fn(regression_x, offset_x, mask, reduction = "none")
+    return  (logic_loss+regression_loss_ys+regression_loss_xs)/3
+   
 
 def run_model_std_reg(net, img, mask, offset_y, offset_x, guassian_mask, return_loss=False, reduction='none'):
     heatmap, regression_y, regression_x = net(img)
@@ -386,13 +362,13 @@ def run_model_adv_reg(net, img, mask, offset_y, offset_x, guassian_mask, return_
 #
 def classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
     threshold=1
-    loss= total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, lamb=2, reduction = 'none')
+    loss= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
     Yp_e_Y=(loss<=threshold)
     return Yp_e_Y
 #
 def classify_model_adv_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
-    threshold=0.1
-    loss= total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, lamb=2, reduction = 'none')
+    threshold=0.5
+    loss= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
     Yp_e_Y=(loss<=threshold)
     return Yp_e_Y
 
