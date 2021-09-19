@@ -118,7 +118,7 @@ if __name__ == "__main__":
             format(epoch, loss_train, \
                 sum(regression_loss_list) / dataset.__len__()))
         loss_train_list.append(loss_train)
-        MRE, loss_val, loss_reg = tester.validate(net)
+        MRE, loss_val,_, loss_reg = tester.validate(net)
         logger.info("Epoch {} Testing MRE {} logic loss {} regression loss {}".format(epoch, MRE, loss_val, loss_reg))
         loss_val_list.append(loss_val)
         MRE_list.append(MRE)

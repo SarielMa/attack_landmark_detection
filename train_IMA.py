@@ -322,127 +322,7 @@ def run_model(model, X):
         Yp = Z.data.max(dim=1)[1]
     return Z, Yp
 
-def IMA_loss_old(model, X, Y, margin, norm_type, max_iter, step,
-             rand_init_norm=None, rand_init_Xn=None,
-             clip_X_min=0, clip_X_max=1,
-             refine_Xn_max_iter=10,
-             Xn1_equal_X=False,
-             Xn2_equal_Xn=False,
-             stop_near_boundary=True,
-             stop_if_label_change=False,
-             stop_if_label_change_next_step=False,
-             use_optimizer=False,
-             beta=0.5, beta_position=1,
-             pgd_loss_fn=None,
-             pgd_num_repeats=1,
-             model_eval_attack=False,
-             model_eval_Xn=False,
-             model_Xn_advc_p=True):
-    #----------------------------------
-    if isinstance(step, torch.Tensor):
-        if use_optimizer:
-            raise ValueError('incompatible')
-        else:
-            temp=tuple([1]*len(X[0].size()))
-            step=step.view(-1, *temp)
-    #-----------------------------------
-    Z, Yp=run_model(model, X)
-    Yp_e_Y=Yp==Y.to(torch.int64)
-    Yp_ne_Y=Yp!=Y.to(torch.int64)
-    #-----------------------------------
-    loss_fn=get_loss_function(Z.size())
-    loss1=torch.tensor(0.0, dtype=X.dtype, device=X.device, requires_grad=True)
-    loss2=torch.tensor(0.0, dtype=X.dtype, device=X.device, requires_grad=True)
-    loss3=torch.tensor(0.0, dtype=X.dtype, device=X.device, requires_grad=True)
-    Xn=torch.tensor([], dtype=X.dtype, device=X.device)
-    Ypn=torch.tensor([], dtype=Y.dtype, device=X.device)
-    advc=torch.zeros(X.size(0), dtype=torch.int64, device=X.device)
-    idx_n=torch.tensor([], dtype=torch.int64, device=X.device)
-    #----------------------------------
-    if Yp_ne_Y.sum().item()>0:
-        loss1 = loss_fn(Z[Yp_ne_Y], Y[Yp_ne_Y])/X.size(0)
-    if Yp_e_Y.sum().item()>0:
-        loss2 = loss_fn(Z[Yp_e_Y], Y[Yp_e_Y])/X.size(0)
-    #---------------------------------
-    train_mode=model.training# record the mode
-    if model_eval_attack == True and train_mode == True:
-        model.eval()#no BN, no dropout, etc
-        #re-run the model in eval mode
-        _Z_, _Yp_=run_model(model, X)
-        Yp_e_Y=_Yp_==Y.to(torch.int64)
-        Yp_ne_Y=_Yp_!=Y.to(torch.int64)
-    #---------------------------------
-    enable_loss3=False
-    if Yp_e_Y.sum().item()>0 and beta>0:
-         enable_loss3=True
-    #----------------------------------
-    if enable_loss3 == True:
-        margin_=margin
-        if isinstance(margin, torch.Tensor):
-            margin_=margin[Yp_e_Y]
-        rand_init_norm_=rand_init_norm
-        if rand_init_norm is not None:
-            if isinstance(rand_init_norm, torch.Tensor):
-                rand_init_norm_=rand_init_norm[Yp_e_Y]
-        rand_init_Xn_=rand_init_Xn
-        if rand_init_Xn is not None:
-            rand_init_Xn_=rand_init_Xn[Yp_e_Y]
-        step_=step
-        if isinstance(step, torch.Tensor):
-            step_=step[Yp_e_Y]
-        Yn=Y[Yp_e_Y]
-        Xn, advc[Yp_e_Y] = repeated_pgd_attack(model, X[Yp_e_Y], Yn,
-                                               noise_norm=margin_, norm_type=norm_type,
-                                               max_iter=max_iter, step=step_,
-                                               rand_init_norm=rand_init_norm_, rand_init_Xn=rand_init_Xn_,
-                                               clip_X_min=clip_X_min, clip_X_max=clip_X_max,
-                                               refine_Xn_max_iter=refine_Xn_max_iter,
-                                               Xn1_equal_X=Xn1_equal_X,
-                                               Xn2_equal_Xn=Xn2_equal_Xn,
-                                               stop_near_boundary=stop_near_boundary,
-                                               stop_if_label_change=stop_if_label_change,
-                                               stop_if_label_change_next_step=stop_if_label_change_next_step,
-                                               use_optimizer=use_optimizer,
-                                               loss_fn=pgd_loss_fn,
-                                               num_repeats=pgd_num_repeats)
-        #--------------------------------------------
-        if model_eval_Xn == True:
-            if model.training == True:
-                model.eval()
-        else:
-            if train_mode == True and model.training == False:
-                model.train()
-        #--------------------------------------------
-        idx_n=torch.arange(0,X.size(0))[Yp_e_Y]
-        if model_Xn_advc_p == True:
-            temp=advc[Yp_e_Y]>0
-            Xn=Xn[temp]
-            Yn=Yn[temp]
-            idx_n=idx_n[temp]
-            if idx_n.size(0)>0:
-                Zn, Ypn=run_model(model, Xn)
-                loss3 = loss_fn(Zn, Yn)/X.size(0)
-        else:
-            Zn, Ypn=run_model(model, Xn)
-            loss3 = loss_fn(Zn, Yn)/X.size(0)
-    #--------------------------------------------
-    if beta_position == 0:
-        loss=(1-beta)*loss1+(beta*0.5)*(loss2+loss3)
-    elif beta_position == 1:
-        loss=(1-beta)*(loss1+loss2)+beta*loss3
-    elif beta_position == 2:
-        loss=loss1+(1-beta)*loss2+beta*loss3
-    elif beta_position == 3:
-        loss=(1-beta)*loss1+beta*loss3
-    else:
-        raise ValueError('unknown beta_position')
-    #--------------------------------------------
-    if train_mode == True and model.training == False:
-        model.train()
-    #--------------------------------------------
-    return loss, loss1, loss2, loss3, Yp, advc, Xn, Ypn, idx_n
-
-def L1Loss(pred, gt, mask=None):
+def L1Loss(pred, gt, mask=None,reduction = "mean"):
     # L1 Loss for offset map
     assert(pred.shape == gt.shape)
     gap = pred - gt
@@ -450,25 +330,74 @@ def L1Loss(pred, gt, mask=None):
     if mask is not None:
         # Caculate grad of the area under mask
         distence = distence * mask
-    return distence.sum() / mask.sum()
-    # return distence.mean()
+        
+    if reduction =="mean":
+        # sum in this function means 'mean'
+        return distence.sum() / mask.sum()
+        # return distence.mean()
+    else:
+        return distence
+    
 
 def focal_loss(pred, gt):
     return (-(1-pred)*gt*torch.log(pred) - pred*(1-gt)*torch.log(1-pred)).mean()
 
-def total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, lamb):
+def total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, lamb=2, reduction = 'sum'):
     # loss
-    loss_logic_fn = BCELoss()
-    loss_regression_fn = L1Loss
-    # the loss for heatmap
-    logic_loss = loss_logic_fn(heatmap, guassian_mask)
-    # the loss for offset
-    regression_loss_y = loss_regression_fn(regression_y, offset_y, mask)
-    regression_loss_x = loss_regression_fn(regression_x, offset_x, mask)
+    if reduction == 'sum':
+        loss_logic_fn = BCELoss()
+        loss_regression_fn = L1Loss
+        # the loss for heatmap
+        logic_loss = loss_logic_fn(heatmap, guassian_mask)
+        # the loss for offset
+        regression_loss_y = loss_regression_fn(regression_y, offset_y, mask, reduction = "mean")
+        regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "mean")
+        return  regression_loss_x + regression_loss_y + logic_loss * lamb, regression_loss_x + regression_loss_y
+    else: 
+        # every sample has its loss, none reduction
+        loss_logic_fn = BCELoss(reduction = reduction)
+        loss_regression_fn = L1Loss
+        # the loss for heatmap
+        logic_loss = loss_logic_fn(heatmap, guassian_mask)
+        # the loss for offset
+        regression_loss_y = loss_regression_fn(regression_y, offset_y, mask, reduction = "none")
+        regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "none")
+        return  regression_loss_x + regression_loss_y + logic_loss * lamb, regression_loss_x + regression_loss_y
+  
     
-    return  regression_loss_x + regression_loss_y + logic_loss * lamb, regression_loss_x + regression_loss_y
 
-def IMA_loss(model, X, Y, margin, norm_type, max_iter, step,
+def run_model_std_reg(net, img, mask, offset_y, offset_x, guassian_mask, return_loss=False, reduction='none'):
+    heatmap, regression_y, regression_x = net(img)
+    
+    if return_loss == True:
+        loss=total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, reduction = reduction)       
+        return heatmap, regression_y, regression_x, loss
+    else:
+        return heatmap, regression_y, regression_x
+#
+def run_model_adv_reg(net, img, mask, offset_y, offset_x, guassian_mask, return_loss=False, reduction='none'):
+    heatmap, regression_y, regression_x = net(img)
+    
+    if return_loss == True:
+        loss=total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, reduction = reduction)       
+        return heatmap, regression_y, regression_x, loss
+    else:
+        return heatmap, regression_y, regression_x
+#
+def classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
+    threshold=1
+    loss= total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, lamb=2, reduction = 'none')
+    Yp_e_Y=(loss<=threshold)
+    return Yp_e_Y
+#
+def classify_model_adv_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
+    threshold=0.1
+    loss= total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, lamb=2, reduction = 'none')
+    Yp_e_Y=(loss<=threshold)
+    return Yp_e_Y
+
+def IMA_loss(net, img, mask, offset_y, offset_x, guassian_mask, 
+             margin, norm_type, max_iter, step,
              rand_init_norm=None, rand_init_Xn=None,
              clip_X_min=0, clip_X_max=1,
              refine_Xn_max_iter=10,
@@ -477,100 +406,68 @@ def IMA_loss(model, X, Y, margin, norm_type, max_iter, step,
              stop_near_boundary=True,
              stop_if_label_change=False,
              stop_if_label_change_next_step=False,
-             use_optimizer=False,
              beta=0.5, beta_position=1,
-             pgd_loss_fn=None,
+             use_optimizer = False,
              pgd_num_repeats=1,
-             model_eval_attack=False,
-             model_eval_Xn=False,
-             model_Xn_advc_p=True):
+             run_model_std=None, classify_model_std_output=None,
+             run_model_adv=None, classify_model_adv_output=None
+             ):
     #----------------------------------
     if isinstance(step, torch.Tensor):
-        if use_optimizer:
-            raise ValueError('incompatible')
-        else:
-            temp=tuple([1]*len(X[0].size()))
-            step=step.view(-1, *temp)
+        temp=tuple([1]*len(X[0].size()))
+        step=step.view(-1, *temp)
     #-----------------------------------
-    Z, Yp=run_model(model, X)
-    Yp_e_Y=Yp==Y.to(torch.int64)
-    Yp_ne_Y=Yp!=Y.to(torch.int64)
+    heatmap, regression_y, regression_x, loss_X=run_model_std(net, img, mask, offset_y, offset_x, guassian_mask,return_loss=True)
+    Yp_e_Y=classify_model_std_output(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
+    Yp_ne_Y=~Yp_e_Y 
     #-----------------------------------
-    loss_fn=get_loss_function(Z.size())
-    loss1=torch.tensor(0.0, dtype=X.dtype, device=X.device, requires_grad=True)
-    loss2=torch.tensor(0.0, dtype=X.dtype, device=X.device, requires_grad=True)
-    loss3=torch.tensor(0.0, dtype=X.dtype, device=X.device, requires_grad=True)
-    Xn=torch.tensor([], dtype=X.dtype, device=X.device)
-    Ypn=torch.tensor([], dtype=Y.dtype, device=X.device)
-    advc=torch.zeros(X.size(0), dtype=torch.int64, device=X.device)
-    idx_n=torch.tensor([], dtype=torch.int64, device=X.device)
+    loss1=torch.tensor(0.0, dtype=img.dtype, device=img.device, requires_grad=True)
+    loss2=torch.tensor(0.0, dtype=img.dtype, device=img.device, requires_grad=True)
+    loss3=torch.tensor(0.0, dtype=img.dtype, device=img.device, requires_grad=True)
+    Xn=torch.tensor([], dtype=img.dtype, device=img.device)
+    Ypn=torch.tensor([], dtype=guassian_mask.dtype, device=guassian_mask.device)
+    advc=torch.zeros(img.size(0), dtype=torch.int64, device=img.device)
+    idx_n=torch.tensor([], dtype=torch.int64, device=img.device)
     #----------------------------------
     if Yp_ne_Y.sum().item()>0:
-        loss1 = loss_fn(Z[Yp_ne_Y], Y[Yp_ne_Y])/X.size(0)
+        loss1 = loss_X[Yp_ne_Y].sum()/img.size(0)
     if Yp_e_Y.sum().item()>0:
-        loss2 = loss_fn(Z[Yp_e_Y], Y[Yp_e_Y])/X.size(0)
+        loss2 = loss_X[Yp_e_Y].sum()/img.size(0)
     #---------------------------------
-    train_mode=model.training# record the mode
-    if model_eval_attack == True and train_mode == True:
-        model.eval()#no BN, no dropout, etc
-        #re-run the model in eval mode
-        _Z_, _Yp_=run_model(model, X)
-        Yp_e_Y=_Yp_==Y.to(torch.int64)
-        Yp_ne_Y=_Yp_!=Y.to(torch.int64)
+    train_mode=net.training# record the mode
     #---------------------------------
+    # we ingore the re_initial, there is no need to use enable_loss3
+    """
     enable_loss3=False
     if Yp_e_Y.sum().item()>0 and beta>0:
          enable_loss3=True
+    """
     #----------------------------------
-    if enable_loss3 == True:
-        margin_=margin
-        if isinstance(margin, torch.Tensor):
-            margin_=margin[Yp_e_Y]
-        rand_init_norm_=rand_init_norm
-        if rand_init_norm is not None:
-            if isinstance(rand_init_norm, torch.Tensor):
-                rand_init_norm_=rand_init_norm[Yp_e_Y]
-        rand_init_Xn_=rand_init_Xn
-        if rand_init_Xn is not None:
-            rand_init_Xn_=rand_init_Xn[Yp_e_Y]
-        step_=step
-        if isinstance(step, torch.Tensor):
-            step_=step[Yp_e_Y]
-        Yn=Y[Yp_e_Y]
-        Xn, advc[Yp_e_Y] = repeated_pgd_attack(model, X[Yp_e_Y], Yn,
-                                               noise_norm=margin_, norm_type=norm_type,
-                                               max_iter=max_iter, step=step_,
-                                               rand_init_norm=rand_init_norm_, rand_init_Xn=rand_init_Xn_,
-                                               clip_X_min=clip_X_min, clip_X_max=clip_X_max,
-                                               refine_Xn_max_iter=refine_Xn_max_iter,
-                                               Xn1_equal_X=Xn1_equal_X,
-                                               Xn2_equal_Xn=Xn2_equal_Xn,
-                                               stop_near_boundary=stop_near_boundary,
-                                               stop_if_label_change=stop_if_label_change,
-                                               stop_if_label_change_next_step=stop_if_label_change_next_step,
-                                               use_optimizer=use_optimizer,
-                                               loss_fn=pgd_loss_fn,
-                                               num_repeats=pgd_num_repeats)
-        #--------------------------------------------
-        if model_eval_Xn == True:
-            if model.training == True:
-                model.eval()
-        else:
-            if train_mode == True and model.training == False:
-                model.train()
-        #--------------------------------------------
-        idx_n=torch.arange(0,X.size(0))[Yp_e_Y]
-        if model_Xn_advc_p == True:
-            temp=advc[Yp_e_Y]>0
-            Xn=Xn[temp]
-            Yn=Yn[temp]
-            idx_n=idx_n[temp]
-            if idx_n.size(0)>0:
-                Zn, Ypn=run_model(model, Xn)
-                loss3 = loss_fn(Zn, Yn)/X.size(0)
-        else:
-            Zn, Ypn=run_model(model, Xn)
-            loss3 = loss_fn(Zn, Yn)/X.size(0)
+    #if enable_loss3 == True:
+    Xn, advc[Yp_e_Y] = repeated_pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, 
+                                           noise_norm=margin, norm_type=norm_type,
+                                           max_iter=max_iter, step=step,
+                                           rand_init_norm=rand_init_norm, rand_init_Xn=rand_init_Xn,
+                                           clip_X_min=clip_X_min, clip_X_max=clip_X_max,
+                                           refine_Xn_max_iter=refine_Xn_max_iter,
+                                           Xn1_equal_X=Xn1_equal_X,
+                                           Xn2_equal_Xn=Xn2_equal_Xn,
+                                           stop_near_boundary=stop_near_boundary,
+                                           stop_if_label_change=stop_if_label_change,
+                                           stop_if_label_change_next_step=stop_if_label_change_next_step,
+                                           use_optimizer=use_optimizer,
+                                           run_model=run_model_adv, classify_model_output=classify_model_adv_output,
+                                           num_repeats=pgd_num_repeats)
+    #--------------------------------------------
+
+    if train_mode == True and net.training == False:
+        net.train()
+    #--------------------------------------------
+    idx_n=torch.arange(0,img.size(0))[Yp_e_Y]
+    h_n, reg_y_n, reg_x_n, loss_Xn=run_model_std(net, Xn, mask, offset_y, offset_x, guassian_mask,return_loss=True)
+    Xn=Xn[idx_n]
+    if idx_n.size(0)>0:   
+        loss3 = loss_Xn[idx_n].sum()/Xn.size(0)
     #--------------------------------------------
     if beta_position == 0:
         loss=(1-beta)*loss1+(beta*0.5)*(loss2+loss3)
@@ -583,10 +480,23 @@ def IMA_loss(model, X, Y, margin, norm_type, max_iter, step,
     else:
         raise ValueError('unknown beta_position')
     #--------------------------------------------
-    if train_mode == True and model.training == False:
-        model.train()
+    if train_mode == True and net.training == False:
+        net.train()
     #--------------------------------------------
-    return loss, Yp, advc, Xn, Ypn, idx_n    
+    return loss, heatmap, regression_y, regression_x, advc, Xn, Ypn, idx_n    
+
+def IMA_update_margin(E, delta, max_margin, flag1, flag2, margin_new):
+    # margin: to be updated
+    # delta: margin expansion step size
+    # max_margin: maximum margin
+    # flag1, flag2, margin_new: from IMA_check_margin
+    expand=(flag1==1)&(flag2==1)
+    no_expand=(flag1==0)&(flag2==1)
+    args.E[expand]+=delta
+    args.E[no_expand]=margin_new[no_expand]
+    #when wrongly classified, do not re-initialize
+    #args.E[flag2==0]=delta
+    E.clamp_(min=0, max=max_margin)
 
 if __name__ == "__main__":
     #CUDA_VISIBLE_DEVICES=0
@@ -664,8 +574,11 @@ if __name__ == "__main__":
     for epoch in range(config['num_epochs']):
         logic_loss_list = list()
         regression_loss_list = list()
+        flag1=torch.zeros(len(args.E), dtype=torch.float32)
+        flag2=torch.zeros(len(args.E), dtype=torch.float32)
+        E_new=args.E.detach().clone()
         net.train()
-        for img, mask, guassian_mask, offset_y, offset_x, landmark_list, Idx in tqdm(dataloader):
+        for img, mask, guassian_mask, offset_y, offset_x, landmark_list, idx in tqdm(dataloader):
             img, mask, offset_y, offset_x, guassian_mask = img.cuda(), mask.cuda(), \
                 offset_y.cuda(), offset_x.cuda(), guassian_mask.cuda()
                 
@@ -673,11 +586,11 @@ if __name__ == "__main__":
             #loss, regLoss  = total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, config['lambda'])
             net.zero_grad()
             #......................................................................................................
-            rand_init_norm=torch.clamp(E[Idx]-delta, min=delta).cuda()
-            margin=E[Idx].cuda()
+            rand_init_norm=torch.clamp(E[idx]-delta, min=delta).cuda()
+            margin=E[idx].cuda()
             step=alpha*margin/max_iter
             #......................................................................................................
-            loss, Yp, advc, Xn ,Ypn, idx_n = IMA_loss(net, img, mask, offset_y, offset_x, guassian_mask,
+            loss, heatmap, regression_y, regression_x, advc, Xn ,Ypn, idx_n = IMA_loss(net, img, mask, offset_y, offset_x, guassian_mask,
                                                     norm_type= np.inf,
                                                     rand_init_norm=rand_init_norm,
                                                     margin=margin,
@@ -690,26 +603,27 @@ if __name__ == "__main__":
                                                     stop_if_label_change=stop_if_label_change,
                                                     stop_if_label_change_next_step=stop_if_label_change_next_step,
                                                     beta=0.5, beta_position=1,
-                                                    use_optimizer=False,
-                                                    
+                                                    use_optimizer=False,                                                
                                                     run_model_std=run_model_std_reg,
                                                     classify_model_std_output=classify_model_std_output_reg,
                                                     run_model_adv=run_model_adv_reg,
-                                                    classify_model_adv_output=classify_model_adv_output_reg,
-                                                    
-                                                    pgd_replace_Y_with_Yp=0,
-                                                    model_eval_attack=0,
-                                                    model_eval_Xn=0,
-                                                    model_Xn_advc_p=0)
+                                                    classify_model_adv_output=classify_model_adv_output_reg)
             
-            #backpropagate
-            #optimizer.zero_grad()
+
             loss.backward()
             optimizer.step()
-            
-            #logic_loss_list.append(logic_loss.cpu().item())
-            #regression_loss_list.append(loss_regression.cpu().item())     
-            
+         #--------------------update the margins
+        #Yp_e_Y=classify_model_std_output_seg(Yp, target)
+        flag1[idx[advc==0]]=1
+        #flag2[idx[Yp_e_Y]]=1
+        flag2[idx]=1
+        if idx_n.shape[0]>0:
+            temp=torch.norm((Xn-img[idx_n]).view(Xn.shape[0], -1), p=args.norm_type, dim=1).cpu()
+            #E_new[idx[idx_n]]=torch.min(E_new[idx[idx_n]], temp)     
+            #bottom = args.delta*torch.ones(E_new.size(0), dtype=E_new.dtype, device=E_new.device)
+            E_new[idx[idx_n]] = (E_new[idx[idx_n]]+temp)/2# use mean to refine the margin to reduce the effect of augmentation on margins
+        #-----------------------------------------------------------------------
+        IMA_update_margin(E, delta, noise, flag1, flag2, E_new) 
         loss_train = sum(loss) / dataset.__len__()
         loss_train_list.append(loss_train)
         logger.info("Epoch {} Training  logic loss {}".format(epoch, loss_train))
