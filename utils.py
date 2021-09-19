@@ -81,7 +81,7 @@ def voting(heatmap, regression_y, regression_x, Radius):
     score_map = torch.zeros(n, c, h, w, dtype=torch.int16)
     spots_heat, spots = heatmap.view(n, c, -1).topk(dim=-1, \
         k=num_candi)
-    spots_y = spots / w
+    spots_y = spots // w # spots location should be integer
     spots_x = spots % w
 
     # for mutiprocessing debug
@@ -92,6 +92,7 @@ def voting(heatmap, regression_y, regression_x, Radius):
     # Each process votes for one landmark
     process_list = list()
     queue = Queue()
+    
     for k in range(c):
         process = Process(target=voting_channel, args=(k, heatmap,\
             regression_y, regression_x, Radius, spots_y, spots_x, queue, num_candi))
@@ -100,11 +101,16 @@ def voting(heatmap, regression_y, regression_x, Radius):
     for process in process_list:
         process.join()
     
+    ##only for debug
+    """
+    for k in range(c):
+        voting_channel(k, heatmap,regression_y, regression_x, Radius, spots_y, spots_x, queue, num_candi)
+    """
     landmark = np.zeros([c], dtype=int)
     for i in range(c):
         out = queue.get()
         landmark[out[0]] = out[1]
-
+    
         # This is for guassian mask
         # landmark[i] = heatmap[0][i].view(-1).max(0)[1]
     landmark_y = landmark / w

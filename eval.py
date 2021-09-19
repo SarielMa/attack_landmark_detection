@@ -107,6 +107,26 @@ class Evaluater(object):
             shot = (temp < radius).sum()
             self.logger.info("ALL SDR {}mm  {}".format\
                 (radius, shot * 100 / total))
+                
+    def my_cal_metrics(self):
+        # calculate MRE SDR
+        temp = np.array(self.RE_list)
+        Mean_RE_channel = temp.mean(axis=0)
+        self.logger.info(Mean_RE_channel)
+        #with open('results.csv', 'w') as f:
+        #    writer = csv.writer(f)
+        #    writer.writerow(Mean_RE_channel.tolist())
+        All_MRE = Mean_RE_channel.mean()
+        self.logger.info("ALL MRE {}".format(All_MRE))
+        reses = []
+        for radius in self.recall_radius:
+            total = temp.size
+            shot = (temp < radius).sum()
+            res = shot * 100 / total
+            reses.append(res)
+            self.logger.info("ALL SDR {}mm  {}".format\
+                (radius,res))
+        return All_MRE, reses
     
     def cal_metrics_attack(self, task_mode=[0, 1, 2, 3]):
         with open(self.tag + 'dict_attack.pkl', 'wb') as f:
