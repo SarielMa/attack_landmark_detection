@@ -239,7 +239,8 @@ def refine_Xn2_onto_boundary(model, Xn1, Xn2, Y, max_iter, run_model, classify_m
     return Xn2
 #%%
 
-def repeated_pgd_attack(model, X, Y, noise_norm, norm_type, max_iter, step,
+def repeated_pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, 
+                        noise_norm, norm_type, max_iter, step,
                         rand_init_norm=None, rand_init_Xn=None,
                         targeted=False, clip_X_min=0, clip_X_max=1,
                         refine_Xn_max_iter=10,
@@ -253,7 +254,8 @@ def repeated_pgd_attack(model, X, Y, noise_norm, norm_type, max_iter, step,
                         model_eval_attack=False,
                         num_repeats=1):
     for m in range(0, num_repeats):
-        Xm, advcm = pgd_attack(model, X, Y, noise_norm, norm_type, max_iter, step,
+        Xm, advcm = pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask,
+                               noise_norm, norm_type, max_iter, step,
                                rand_init_norm, rand_init_Xn,
                                targeted, clip_X_min, clip_X_max,
                                refine_Xn_max_iter,
