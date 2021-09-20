@@ -147,7 +147,7 @@ def pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask,
     for n in range(0, max_iter+1):
         Xn = Xn.detach()
         Xn.requires_grad = True        
-        heatmap, regression_y, regression_x, loss=run_model(net, img, mask, offset_y, offset_x, guassian_mask, return_loss=True, reduction='sum')
+        heatmap, regression_y, regression_x, loss=run_model(net, Xn, mask, offset_y, offset_x, guassian_mask, return_loss=True, reduction='sum')
         Ypn_e_Y=classify_model_output(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
         Ypn_ne_Y=~Ypn_e_Y
         #---------------------------
@@ -178,12 +178,12 @@ def pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask,
                 optimizer.step()
             else:
                 Xnew = Xn + step*grad_n
-                noise = Xnew-X
+                noise = Xnew-img
             #---------------------
             clip_norm_(noise, norm_type, noise_norm)
             #Xn = torch.clamp(X+noise, clip_X_min, clip_X_max)
-            Xn = X+noise
-            noise.data -= noise.data-(Xn-X).data
+            Xn = img+noise
+            noise.data -= noise.data-(Xn-img).data
             #---------------------
             Ypn_old_e_Y=Ypn_e_Y
             Ypn_old_ne_Y=Ypn_ne_Y
@@ -464,8 +464,8 @@ def IMA_update_margin(E, delta, max_margin, flag1, flag2, margin_new):
     # flag1, flag2, margin_new: from IMA_check_margin
     expand=(flag1==1)&(flag2==1)
     no_expand=(flag1==0)&(flag2==1)
-    args.E[expand]+=delta
-    args.E[no_expand]=margin_new[no_expand]
+    E[expand]+=delta
+    E[no_expand]=margin_new[no_expand]
     #when wrongly classified, do not re-initialize
     #args.E[flag2==0]=delta
     E.clamp_(min=0, max=max_margin)
@@ -536,7 +536,8 @@ if __name__ == "__main__":
     delta = noise/epoch_refine
     E = delta*torch.ones(sample_count_train, dtype=torch.float32)
     alpha = 4    
-    max_iter=20    
+    max_iter=20   
+    norm_type = np.inf
     #======================
     
     loss_train_list = list()
@@ -544,7 +545,7 @@ if __name__ == "__main__":
     MRE_list = list()
     
     for epoch in range(config['num_epochs']):
-        logic_loss_list = list()
+        loss_list = list()
         regression_loss_list = list()
         flag1=torch.zeros(len(E), dtype=torch.float32)
         flag2=torch.zeros(len(E), dtype=torch.float32)
@@ -563,7 +564,7 @@ if __name__ == "__main__":
             step=alpha*margin/max_iter
             #......................................................................................................
             loss, heatmap, regression_y, regression_x, advc, Xn ,Ypn, idx_n = IMA_loss(net, img, mask, offset_y, offset_x, guassian_mask,
-                                                    norm_type= np.inf,
+                                                    norm_type= norm_type,
                                                     rand_init_norm=rand_init_norm,
                                                     margin=margin,
                                                     max_iter=max_iter,
@@ -584,19 +585,20 @@ if __name__ == "__main__":
 
             loss.backward()
             optimizer.step()
+            loss_list.append(loss)
          #--------------------update the margins
         #Yp_e_Y=classify_model_std_output_seg(Yp, target)
         flag1[idx[advc==0]]=1
         #flag2[idx[Yp_e_Y]]=1
         flag2[idx]=1
         if idx_n.shape[0]>0:
-            temp=torch.norm((Xn-img[idx_n]).view(Xn.shape[0], -1), p=args.norm_type, dim=1).cpu()
+            temp=torch.norm((Xn-img[idx_n]).view(Xn.shape[0], -1), p=norm_type, dim=1).cpu()
             #E_new[idx[idx_n]]=torch.min(E_new[idx[idx_n]], temp)     
             #bottom = args.delta*torch.ones(E_new.size(0), dtype=E_new.dtype, device=E_new.device)
             E_new[idx[idx_n]] = (E_new[idx[idx_n]]+temp)/2# use mean to refine the margin to reduce the effect of augmentation on margins
         #-----------------------------------------------------------------------
         IMA_update_margin(E, delta, noise, flag1, flag2, E_new) 
-        loss_train = sum(loss) / dataset.__len__()
+        loss_train = sum(loss_list) / dataset.__len__()
         loss_train_list.append(loss_train)
         logger.info("Epoch {} Training  logic loss {}".format(epoch, loss_train))
         
@@ -615,20 +617,22 @@ if __name__ == "__main__":
             # plot the trend
             cols = ['b','g','r','y','k','m','c']
             
-            fig,axs = plt.subplots(1,3, figsize=(15,5))
+            fig,axs = plt.subplots(1,4, figsize=(20,5))
 
             #ax = fig.add_subplot(111)
             X = list(range(epoch+1))
             axs[0].plot(X, loss_train_list, color=cols[0], label="Training Loss")
             axs[1].plot(X, loss_val_list, color=cols[1], label="Validation Loss")
             axs[2].plot(X, MRE_list, color=cols[2], label="MRE")
+            axs[3].hist(E.cpu().numpy(), bins=100, range=(0, noise))
             axs[0].set_xlabel("epoch")   
             axs[1].set_xlabel("epoch")
             axs[2].set_xlabel("epoch")
+            axs[3].set_xlabel("margins")
             axs[0].legend()
             axs[1].legend()
             axs[2].legend()           
-            fig.savefig(runs_dir +"training.png")
+            fig.savefig(runs_dir +"/training.png")
             #save the last epoch
             config['last_epoch'] = epoch
 
