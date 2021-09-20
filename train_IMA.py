@@ -106,7 +106,8 @@ def clip_normB_(noise, norm_type, norm_max):
     return noise
 #%%
 
-def pgd_attack(model, X, Y, noise_norm, norm_type, max_iter, step,
+def pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, 
+               noise_norm, norm_type, max_iter, step,
                rand_init_norm=None, rand_init_Xn=None,
                targeted=False, clip_X_min=0, clip_X_max=1,
                refine_Xn_max_iter=10,
@@ -118,36 +119,36 @@ def pgd_attack(model, X, Y, noise_norm, norm_type, max_iter, step,
                run_model=None, classify_model_output=None,               
                model_eval_attack=False):
     #-------------------------------------------
-    train_mode=model.training# record the mode
+    train_mode=net.training# record the mode
     if model_eval_attack == True and train_mode == True:
-        model.eval()#set model to evaluation mode
+        net.eval()#set model to evaluation mode
     #-----------------
-    X = X.detach()
+    img = img.detach()
     #-----------------
-    advc=torch.zeros(X.size(0), dtype=torch.int64, device=X.device)
+    advc=torch.zeros(img.size(0), dtype=torch.int64, device=img.device)
     #-----------------
     if rand_init_norm is not None:
-        noise_init=get_noise_init(norm_type, noise_norm, rand_init_norm, X)
-        Xn = X + noise_init
+        noise_init=get_noise_init(norm_type, noise_norm, rand_init_norm, img)
+        Xn = img + noise_init
     elif rand_init_Xn is not None:
         Xn = rand_init_Xn.clone().detach()
     else:
         raise ValueError('invalid input')
     #-----------------
-    Xn1=X.detach().clone()
-    Xn2=X.detach().clone()
-    Ypn_old_e_Y=torch.ones(Y[0].shape[0], dtype=torch.bool, device=Y[0].device)
+    Xn1=img.detach().clone()
+    Xn2=img.detach().clone()
+    Ypn_old_e_Y=torch.ones(guassian_mask.shape[0], dtype=torch.bool, device=guassian_mask.device)
     Ypn_old_ne_Y=~Ypn_old_e_Y
     #-----------------
-    noise=(Xn-X).detach()
+    noise=(Xn-img).detach()
     if use_optimizer == True:
         optimizer = optim.Adamax([noise], lr=step)
     #-----------------
     for n in range(0, max_iter+1):
         Xn = Xn.detach()
         Xn.requires_grad = True        
-        Ypn, loss=run_model(model, Xn, Y, return_loss=True, reduction='sum')
-        Ypn_e_Y=classify_model_output(Ypn, Y)
+        heatmap, regression_y, regression_x, loss=run_model(net, img, mask, offset_y, offset_x, guassian_mask, return_loss=True, reduction='sum')
+        Ypn_e_Y=classify_model_output(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
         Ypn_ne_Y=~Ypn_e_Y
         #---------------------------
         #targeted attack, Y should be filled with targeted output
@@ -195,37 +196,29 @@ def pgd_attack(model, X, Y, noise_norm, norm_type, max_iter, step,
     if stop_near_boundary == True:
         temp=advc>0
         if temp.sum()>0:
-            Xn_out=refine_Xn_onto_boundary(model, Xn1, Xn2, Y, refine_Xn_max_iter, run_model, classify_model_output)
-    elif stop_if_label_change == True:
-        temp=advc>0
-        if temp.sum()>0:
-            Xn_out=refine_Xn2_onto_boundary(model, Xn1, Xn2, Y, refine_Xn_max_iter, run_model, classify_model_output)
-    elif stop_if_label_change_next_step == True:
-        temp=advc>0
-        if temp.sum()>0:
-            Xn_out=refine_Xn1_onto_boundary(model, Xn1, Xn2, Y, refine_Xn_max_iter, run_model, classify_model_output)
+            Xn_out=refine_Xn_onto_boundary(net, Xn1, Xn2, mask, offset_y, offset_x, guassian_mask, refine_Xn_max_iter, run_model, classify_model_output)
     #---------------------------
-    if train_mode == True and model.training == False:
-        model.train()
+    if train_mode == True and net.training == False:
+        net.train()
     #---------------------------
     return Xn_out, advc
 #%%
-def refine_onto_boundary(model, Xn1, Xn2, Y, max_iter, run_model, classify_model_output):
+def refine_onto_boundary(net, Xn1, Xn2, mask, offset_y, offset_x, guassian_mask, max_iter, run_model, classify_model_output):
 #note: Xn1 and Xn2 will be modified
     with torch.no_grad():
         Xn=(Xn1+Xn2)/2
         for k in range(0, max_iter):
-            Ypn=run_model(model, Xn, return_loss=False)            
-            Ypn_e_Y=classify_model_output(Ypn, Y)
+            heatmap, regression_y, regression_x =run_model(net, img, mask, offset_y, offset_x, guassian_mask, return_loss=False)            
+            Ypn_e_Y=classify_model_output(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
             Ypn_ne_Y=~Ypn_e_Y
             Xn1[Ypn_e_Y]=Xn[Ypn_e_Y]
             Xn2[Ypn_ne_Y]=Xn[Ypn_ne_Y]
             Xn=(Xn1+Xn2)/2
     return Xn, Xn1, Xn2
 #%%
-def refine_Xn_onto_boundary(model, Xn1, Xn2, Y, max_iter, run_model, classify_model_output):
+def refine_Xn_onto_boundary(net, Xn1, Xn2, mask, offset_y, offset_x, guassian_mask, max_iter, run_model, classify_model_output):
 #note: Xn1 and Xn2 will be modified
-    Xn, Xn1, Xn2=refine_onto_boundary(model, Xn1, Xn2, Y, max_iter, run_model, classify_model_output)
+    Xn, Xn1, Xn2=refine_onto_boundary(net, Xn1, Xn2, mask, offset_y, offset_x, guassian_mask, max_iter, run_model, classify_model_output)
     return Xn
 #%%
 def refine_Xn1_onto_boundary(model, Xn1, Xn2, Y, max_iter, run_model, classify_model_output):
@@ -305,7 +298,7 @@ def L1Loss(pred, gt, mask=None,reduction = "mean"):
         return distence.sum() / mask.sum()
         # return distence.mean()
     else:
-        return distence
+        return distence.sum([1,2,3])/mask.sum([1,2,3])
     
 
 def focal_loss(pred, gt):
@@ -328,6 +321,7 @@ def total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, off
         loss_regression_fn = L1Loss
         # the loss for heatmap
         logic_loss = loss_logic_fn(heatmap, guassian_mask)
+        logic_loss = logic_loss.view(logic_loss.size(0),-1).mean(1)
         # the loss for offset
         regression_loss_y = loss_regression_fn(regression_y, offset_y, mask, reduction = "none")
         regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "none")
@@ -348,7 +342,7 @@ def run_model_std_reg(net, img, mask, offset_y, offset_x, guassian_mask, return_
     heatmap, regression_y, regression_x = net(img)
     
     if return_loss == True:
-        loss=total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, reduction = reduction)       
+        loss, _=total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, reduction = reduction)       
         return heatmap, regression_y, regression_x, loss
     else:
         return heatmap, regression_y, regression_x
@@ -357,7 +351,7 @@ def run_model_adv_reg(net, img, mask, offset_y, offset_x, guassian_mask, return_
     heatmap, regression_y, regression_x = net(img)
     
     if return_loss == True:
-        loss=total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, reduction = reduction)       
+        loss, _=total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, reduction = reduction)       
         return heatmap, regression_y, regression_x, loss
     else:
         return heatmap, regression_y, regression_x
@@ -392,7 +386,7 @@ def IMA_loss(net, img, mask, offset_y, offset_x, guassian_mask,
              ):
     #----------------------------------
     if isinstance(step, torch.Tensor):
-        temp=tuple([1]*len(X[0].size()))
+        temp=tuple([1]*len(img[0].size()))
         step=step.view(-1, *temp)
     #-----------------------------------
     heatmap, regression_y, regression_x, loss_X=run_model_std(net, img, mask, offset_y, offset_x, guassian_mask,return_loss=True)
@@ -552,9 +546,9 @@ if __name__ == "__main__":
     for epoch in range(config['num_epochs']):
         logic_loss_list = list()
         regression_loss_list = list()
-        flag1=torch.zeros(len(args.E), dtype=torch.float32)
-        flag2=torch.zeros(len(args.E), dtype=torch.float32)
-        E_new=args.E.detach().clone()
+        flag1=torch.zeros(len(E), dtype=torch.float32)
+        flag2=torch.zeros(len(E), dtype=torch.float32)
+        E_new=E.detach().clone()
         net.train()
         for img, mask, guassian_mask, offset_y, offset_x, landmark_list, idx in tqdm(dataloader):
             img, mask, offset_y, offset_x, guassian_mask = img.cuda(), mask.cuda(), \
