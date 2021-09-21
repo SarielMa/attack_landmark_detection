@@ -328,14 +328,18 @@ def total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, off
         return  regression_loss_x + regression_loss_y + logic_loss * lamb, regression_loss_x + regression_loss_y
   
 def l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
-    loss_logic_fn = L1Loss
+    #loss_logic_fn = L1Loss
     loss_regression_fn = L1Loss
     # the loss for heatmap
-    logic_loss = loss_logic_fn(heatmap, guassian_mask, mask, reduction = "none")
+    #logic_loss = loss_logic_fn(heatmap, guassian_mask, mask, reduction = "none")
+    guassian_mask=guassian_mask/guassian_mask.sum(dim=(2,3), keepdim=True)
+    heatmap=heatmap/heatmap.sum(dim=(2,3), keepdim=True)
+    r=(heatmap*guassian_mask).sum(dim=(2,3))
+    r=r.mean(dim = 1)
     # the loss for offset
     regression_loss_ys = loss_regression_fn(regression_y, offset_y, mask, reduction = "none")
     regression_loss_xs = loss_regression_fn(regression_x, offset_x, mask, reduction = "none")
-    return  (logic_loss+regression_loss_ys+regression_loss_xs)/3
+    return  r, regression_loss_ys,regression_loss_xs
    
 
 def run_model_std_reg(net, img, mask, offset_y, offset_x, guassian_mask, return_loss=False, reduction='none'):
@@ -357,15 +361,19 @@ def run_model_adv_reg(net, img, mask, offset_y, offset_x, guassian_mask, return_
         return heatmap, regression_y, regression_x
 #
 def classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
-    threshold=1
-    loss= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
-    Yp_e_Y=(loss<=threshold)
+    threshold1=1
+    threshold2=80
+    threshold3 = 80
+    r, ry, rx= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
+    Yp_e_Y=(r<=threshold1) & (ry <=threshold2) & (rx <= threshold3)
     return Yp_e_Y
 #
 def classify_model_adv_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
-    threshold=0.5
-    loss= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
-    Yp_e_Y=(loss<=threshold)
+    threshold1=1
+    threshold2=80
+    threshold3 = 80
+    r, ry, rx= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
+    Yp_e_Y=(r<=threshold1) & (ry <=threshold2) & (rx <= threshold3)
     return Yp_e_Y
 
 def IMA_loss(net, img, mask, offset_y, offset_x, guassian_mask, 
@@ -531,9 +539,9 @@ if __name__ == "__main__":
     #======================
     
     sample_count_train = 150
-    noise = 0.1
+    noise = 1.0
     epoch_refine = config['num_epochs']
-    delta = noise/epoch_refine
+    delta = 5*noise/epoch_refine
     E = delta*torch.ones(sample_count_train, dtype=torch.float32)
     alpha = 4    
     max_iter=20   
@@ -600,7 +608,7 @@ if __name__ == "__main__":
         IMA_update_margin(E, delta, noise, flag1, flag2, E_new) 
         loss_train = sum(loss_list) / dataset.__len__()
         loss_train_list.append(loss_train)
-        logger.info("Epoch {} Training  logic loss {}".format(epoch, loss_train))
+        logger.info("Epoch {} Training loss {}".format(epoch, loss_train))
         
         
         #validation part       
