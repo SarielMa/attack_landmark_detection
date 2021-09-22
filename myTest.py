@@ -83,8 +83,7 @@ class Tester(object):
         
         # Creat evluater to record results
         if args == None or args.rand == "":
-            self.evaluater = Evaluater(logger, dataset_1.size, \
-                dataset_1.original_size)
+            self.evaluater = Evaluater(logger, dataset_1.size, dataset_1.original_size)
         else:
             self.evaluater = Evaluater(logger, dataset_1.size, \
                 dataset_1.original_size, args.rand)

@@ -118,34 +118,74 @@ def get_noise_init(norm_type, noise_norm, init_norm, X):
     clip_norm_(noise_init, norm_type, init_norm)
     clip_norm_(noise_init, norm_type, noise_norm)
     return noise_init
+
+def L1Loss(pred, gt, mask=None,reduction = "mean"):
+    # L1 Loss for offset map
+    assert(pred.shape == gt.shape)
+    gap = pred - gt
+    distence = gap.abs()
+    if mask is not None:
+        # Caculate grad of the area under mask
+        distence = distence * mask
+        
+    if reduction =="mean":
+        # sum in this function means 'mean'
+        return distence.sum() / mask.sum()
+        # return distence.mean()
+    else:
+        return distence.sum([1,2,3])/mask.sum([1,2,3])
+
+def total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, lamb=2, reduction = 'sum'):
+    # loss
+    if reduction == 'sum':
+        loss_logic_fn = BCELoss()
+        loss_regression_fn = L1Loss
+        # the loss for heatmap
+        logic_loss = loss_logic_fn(heatmap, guassian_mask)
+        # the loss for offset
+        regression_loss_y = loss_regression_fn(regression_y, offset_y, mask, reduction = "mean")
+        regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "mean")
+        return  regression_loss_x + regression_loss_y + logic_loss * lamb, regression_loss_x + regression_loss_y
+    else: 
+        # every sample has its loss, none reduction
+        loss_logic_fn = BCELoss(reduction = reduction)
+        loss_regression_fn = L1Loss
+        # the loss for heatmap
+        logic_loss = loss_logic_fn(heatmap, guassian_mask)
+        logic_loss = logic_loss.view(logic_loss.size(0),-1).mean(1)
+        # the loss for offset
+        regression_loss_y = loss_regression_fn(regression_y, offset_y, mask, reduction = "none")
+        regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "none")
+        return  regression_loss_x + regression_loss_y + logic_loss * lamb, regression_loss_x + regression_loss_y
 #%%
-def pgd_attack(model, X, Y, noise_norm, norm_type, max_iter, step,
+def pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, 
+               noise_norm, norm_type, max_iter, step,
                rand_init=True, rand_init_norm=None, targeted=False,
                clip_X_min=0, clip_X_max=1, use_optimizer=False, loss_fn=None):
     #-----------------------------------------------------
     if loss_fn is None :
         raise ValueError('loss_fn is unkown')
     #-----------------
-    X = X.detach()
+    img = img.detach()
     #-----------------
     if rand_init == True:
         init_norm=rand_init_norm
         if rand_init_norm is None:
             init_norm=noise_norm
-        noise_init=get_noise_init(norm_type, noise_norm, init_norm, X)
-        Xn = X + noise_init
+        noise_init=get_noise_init(norm_type, noise_norm, init_norm, img)
+        Xn = img + noise_init
     else:
-        Xn = X.clone().detach() # must clone
+        Xn = img.clone().detach() # must clone
     #-----------------
-    noise_new=(Xn-X).detach()
+    noise_new=(Xn-img).detach()
     if use_optimizer == True:
         optimizer = optim.Adamax([noise_new], lr=step)
     #-----------------
     for n in range(0, max_iter):
         Xn = Xn.detach()
         Xn.requires_grad = True
-        Zn = model(Xn)
-        loss = loss_fn(Zn, Y)
+        heatmap, regression_y, regression_x = net(Xn)
+        loss,_  = total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
         #---------------------------
         if targeted == True:
             loss=-loss
@@ -158,12 +198,12 @@ def pgd_attack(model, X, Y, noise_norm, norm_type, max_iter, step,
             optimizer.step()
         else:
             Xnew = Xn.detach() + step*grad_n.detach()
-            noise_new = Xnew-X
+            noise_new = Xnew-img
         #---------------------
         clip_norm_(noise_new, norm_type, noise_norm)
         #Xn = torch.clamp(X+noise_new, clip_X_min, clip_X_max)
-        Xn = X + noise_new
-        noise_new.data -= noise_new.data-(Xn-X).data
+        Xn = img + noise_new
+        noise_new.data -= noise_new.data-(Xn-img).data
         Xn=Xn.detach()
     #---------------------------
     return Xn
@@ -176,7 +216,7 @@ if __name__ == "__main__":
     #device = torch.device('cuda:1')
     # Parse command line options
     parser = argparse.ArgumentParser(description="Train Unet landmark detection network")
-    parser.add_argument("--tag", default='train', help="name of the run")
+    parser.add_argument("--tag", default='pgd_0.3', help="name of the run")
     parser.add_argument("--config_file", default="config.yaml", help="default configs")
     args = parser.parse_args()
  
@@ -217,18 +257,14 @@ if __name__ == "__main__":
     tester = Tester(logger, config, tag=args.tag)
     
     # parameters
-    stop = 1
-    stop_near_boundary=False
-    stop_if_label_change=False
-    stop_if_label_change_next_step=False
-    if stop==1:
-        stop_near_boundary=True
-    elif stop==2:
-        stop_if_label_change=True
-    elif stop==3:
-        stop_if_label_change_next_step=True  
+ 
     #======================
-
+    noise = float(args.tag.split("_")[1])
+    assert(type(noise) == float)
+    norm_type = np.inf
+    max_iter = 20
+    step = 5*noise/max_iter
+    title = "PGD"
     #======================
     
     loss_train_list = list()
@@ -238,23 +274,23 @@ if __name__ == "__main__":
     for epoch in range(config['num_epochs']):
         loss_list = list()
         regression_loss_list = list()
-        flag1=torch.zeros(len(E), dtype=torch.float32)
-        flag2=torch.zeros(len(E), dtype=torch.float32)
-        E_new=E.detach().clone()
+
         net.train()
         for img, mask, guassian_mask, offset_y, offset_x, landmark_list, idx in tqdm(dataloader):
             img, mask, offset_y, offset_x, guassian_mask = img.cuda(), mask.cuda(), \
                 offset_y.cuda(), offset_x.cuda(), guassian_mask.cuda()
                 
-            #heatmap, regression_y, regression_x = net(img)
-            #loss, regLoss  = total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, config['lambda'])
             net.zero_grad()
-            #......................................................................................................
-
-            #......................................................................................................
-
+            heatmap, regression_y, regression_x = net(img)
+            lossp, regLossp  = total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
             
-
+            imgn = pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, 
+                              noise, norm_type, max_iter,step, loss_fn=total_loss)
+            heatmapn, regression_yn, regression_xn = net(imgn)
+            lossn, regLossn  = total_loss(heatmapn, guassian_mask, regression_yn, offset_y, regression_xn, offset_x, mask)
+            
+            loss = lossp*0.5 + lossn*0.5
+            
             loss.backward()
             optimizer.step()
             loss_list.append(loss)
@@ -281,7 +317,7 @@ if __name__ == "__main__":
             # plot the trend
             cols = ['b','g','r','y','k','m','c']
             
-            fig,axs = plt.subplots(1,4, figsize=(15,5))
+            fig,axs = plt.subplots(1,3, figsize=(15,5))
 
             #ax = fig.add_subplot(111)
             X = list(range(epoch+1))
