@@ -17,14 +17,7 @@ from eval import Evaluater
 from utils import to_Image, voting, visualize, make_dir
 from attack import FGSMAttack
 
-def get_MICCAI(miccai):
-    landmark_list = dict()
-    with open('MICCAI/' + miccai +'.txt', 'r') as f:
-        for i in range(19):
-            coordinates = f.readline().split(',')
-            coordinates = [int(item) for item in coordinates]
-            landmark_list[i] = coordinates
-    return landmark_list
+
 
 def L1Loss(pred, gt, mask=None):
     assert(pred.shape == gt.shape)
@@ -50,30 +43,7 @@ def myL1Loss(pred, gt, mask=None,reduction = "mean"):
     else:
         return distence.sum([1,2,3])/mask.sum([1,2,3])
 
-def total_loss(mask, guassian_mask, heatmap, gt_y, gt_x, pred_y, pred_x, lamda, target_list=None):
-    b, k, h, w = mask.shape
-    logic_loss = BCELoss()
-    loss_list = list()
-    for i in range(mask.shape[1]):
-        channel_loss = 2 * logic_loss(heatmap[0][i], guassian_mask[0][i]) +\
-            (L1Loss(pred_y[0][i], gt_y[0][i], mask[0][i]) + L1Loss(pred_x[0][i], gt_x[0][i], mask[0][i]))
-        loss_list.append(channel_loss)
-    total_loss = np.array(loss_list).sum()
-    return total_loss
 
-def total_loss_adaptive(mask, guassian_mask, heatmap, gt_y, gt_x, pred_y, pred_x, lamda, target_list=None):
-    b, k, h, w = mask.shape
-    logic_loss = BCELoss()
-    loss_list = list()
-    for i in range(mask.shape[1]):
-        channel_loss = 2 * logic_loss(heatmap[0][i], guassian_mask[0][i]) +\
-            (L1Loss(pred_y[0][i], gt_y[0][i], mask[0][i]) + L1Loss(pred_x[0][i], gt_x[0][i], mask[0][i]))
-        loss_list.append(channel_loss)
-    loss_list_mean = torch.tensor(loss_list).mean()
-    for i in range(len(loss_list)):
-        loss_list[i] *= loss_list[i] / loss_list_mean
-    total_loss = np.array(loss_list).sum()
-    return total_loss
 
 class Tester(object):
     def __init__(self, logger, config, net=None, tag=None, train="", args=None):
@@ -104,6 +74,7 @@ class Tester(object):
         r_list = list()
         ry_list = list()   
         rx_list = list()
+        bce_list = list()
         
         dataset_train = Cephalometric(self.datapath, "train")
         dataloader_train = DataLoader(dataset_train, batch_size=1, shuffle=False, num_workers=self.nWorkers)
@@ -116,6 +87,10 @@ class Tester(object):
                 # get the threshold for each of the samples
                 loss_regression_fn = myL1Loss
                 # the loss for heatmap
+                #BCE loss
+                loss_logic_fn = BCELoss()
+                bce= loss_logic_fn(heatmap, guassian_mask)
+                # r rario
                 #logic_loss = loss_logic_fn(heatmap, guassian_mask, mask, reduction = "none")
                 guassian_mask=guassian_mask/guassian_mask.sum(dim=(2,3), keepdim=True)
                 heatmap=heatmap/heatmap.sum(dim=(2,3), keepdim=True)
@@ -130,20 +105,23 @@ class Tester(object):
                 r_list.append(r.cpu().numpy())
                 ry_list.append(regression_loss_ys.cpu().numpy())
                 rx_list.append(regression_loss_xs.cpu().numpy())
+                bce_list.append(bce.cpu().item())
 
         rList = np.concatenate(r_list)
         ryList = np.concatenate(ry_list)
         rxList = np.concatenate(rx_list)
-        
+        bcelist = bce_list
         import matplotlib.pyplot as plt
         cols = ['b','g','r','y','k','m','c']
-        fig, ax = plt.subplots(1,3, figsize=(15,5))
+        fig, ax = plt.subplots(1,4, figsize=(20,5))
         ax[0].hist(rList,  bins=50, color=cols[0], label="distribution of ratio")
         ax[1].hist(ryList,bins=50, color=cols[1], label="distribution of offset y error")
         ax[2].hist(rxList,bins=50, color=cols[2], label="distribution of offset x error")
+        ax[3].hist(bcelist,bins=50, color=cols[3], label="distribution of BCE")
         ax[0].legend()
         ax[1].legend()
         ax[2].legend() 
+        ax[3].legend()
         fig.savefig("./threshold_distribution_of_training_data.png")
         return rList.mean(), ryList.mean(), rxList.mean()       
 
@@ -165,7 +143,7 @@ if __name__ == "__main__":
     parser.add_argument("--epsilon", default="8", help="default configs")
     args = parser.parse_args()
 
-    with open(os.path.join("./runs/base_400_320", args.config_file), "r") as f:
+    with open(os.path.join("./results/base_400_320", args.config_file), "r") as f:
         config = yaml.load(f, Loader=yamlloader.ordereddict.CLoader)
     
     # Create Logger
@@ -180,7 +158,7 @@ if __name__ == "__main__":
     net = UNet_Pretrained(3, config['num_landmarks']).cuda()
 
     logger.info("Loading checkpoints from epoch {}".format(iteration))
-    checkpoints = torch.load("./runs/base_400_320/model_epoch_{}.pth".format(iteration))
+    checkpoints = torch.load("./results/base_400_320/model_epoch_{}.pth".format(iteration))
     newCP = dict()
     #adjust the keys(remove the "module.")
     for k in checkpoints.keys():

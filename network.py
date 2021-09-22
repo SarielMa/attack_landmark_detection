@@ -22,8 +22,8 @@ class UNet_Pretrained(nn.Module):
       
         self.final = nn.Conv2d(64, self.n_classes*3, kernel_size=1, padding=0)
 
-    def forward(self, x):
-        _, features = self.vgg.features(x, get_features=True)
+    def forward(self, xin):
+        _, features = self.vgg.features(xin, get_features=True)
 
         x = self.up1(features[4], features[3])
         x = self.up2(x, features[2])

@@ -117,15 +117,8 @@ def get_noise_init(norm_type, noise_norm, init_norm, X):
     return noise_init
 
 
-def L1Loss(pred, gt, mask=None):
-    assert(pred.shape == gt.shape)
-    gap = pred - gt
-    distence = gap.abs()
-    if mask is not None:
-        distence = distence * mask
-    return distence.sum() / mask.sum()
-    # return distence.mean()
-def myL1Loss(pred, gt, mask=None,reduction = "mean"):
+
+def L1Loss(pred, gt, mask=None,reduction = "mean"):
     # L1 Loss for offset map
     assert(pred.shape == gt.shape)
     gap = pred - gt
@@ -141,34 +134,34 @@ def myL1Loss(pred, gt, mask=None,reduction = "mean"):
     else:
         return distence.sum([1,2,3])/mask.sum([1,2,3])
 
-def total_loss(mask, guassian_mask, heatmap, gt_y, gt_x, pred_y, pred_x, lamda, target_list=None):
-    b, k, h, w = mask.shape
-    logic_loss = BCELoss()
-    loss_list = list()
-    for i in range(mask.shape[1]):
-        channel_loss = 2 * logic_loss(heatmap[0][i], guassian_mask[0][i]) +\
-            (L1Loss(pred_y[0][i], gt_y[0][i], mask[0][i]) + L1Loss(pred_x[0][i], gt_x[0][i], mask[0][i]))
-        loss_list.append(channel_loss)
-    total_loss = np.array(loss_list).sum()
-    return total_loss
+def total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, lamb=2, reduction = 'sum'):
+    # loss
+    if reduction == 'sum':
+        loss_logic_fn = BCELoss()
+        loss_regression_fn = L1Loss
+        # the loss for heatmap
+        logic_loss = loss_logic_fn(heatmap, guassian_mask)
+        # the loss for offset
+        regression_loss_y = loss_regression_fn(regression_y, offset_y, mask, reduction = "mean")
+        regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "mean")
+        return  regression_loss_x + regression_loss_y + logic_loss * lamb, regression_loss_x + regression_loss_y
+    else: 
+        # every sample has its loss, none reduction
+        loss_logic_fn = BCELoss(reduction = reduction)
+        loss_regression_fn = L1Loss
+        # the loss for heatmap
+        logic_loss = loss_logic_fn(heatmap, guassian_mask)
+        logic_loss = logic_loss.view(logic_loss.size(0),-1).mean(1)
+        # the loss for offset
+        regression_loss_y = loss_regression_fn(regression_y, offset_y, mask, reduction = "none")
+        regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "none")
+        return  regression_loss_x + regression_loss_y + logic_loss * lamb, regression_loss_x + regression_loss_y
 
-def total_loss_adaptive(mask, guassian_mask, heatmap, gt_y, gt_x, pred_y, pred_x, lamda, target_list=None):
-    b, k, h, w = mask.shape
-    logic_loss = BCELoss()
-    loss_list = list()
-    for i in range(mask.shape[1]):
-        channel_loss = 2 * logic_loss(heatmap[0][i], guassian_mask[0][i]) +\
-            (L1Loss(pred_y[0][i], gt_y[0][i], mask[0][i]) + L1Loss(pred_x[0][i], gt_x[0][i], mask[0][i]))
-        loss_list.append(channel_loss)
-    loss_list_mean = torch.tensor(loss_list).mean()
-    for i in range(len(loss_list)):
-        loss_list[i] *= loss_list[i] / loss_list_mean
-    total_loss = np.array(loss_list).sum()
-    return total_loss
+
+
 
 #%%
-def pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, 
-               noise_norm, norm_type, max_iter, step,
+def pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, noise_norm, norm_type, max_iter, step,
                rand_init=True, rand_init_norm=None, targeted=False,
                clip_X_min=0, clip_X_max=1, use_optimizer=False, loss_fn=None):
     #-----------------------------------------------------
@@ -258,7 +251,7 @@ class Tester(object):
             with torch.no_grad():
                 heatmap, regression_y, regression_x = self.model(img)
                 # get the threshold for each of the samples
-                loss_regression_fn = myL1Loss
+                loss_regression_fn = L1Loss
                 # the loss for heatmap
                 #logic_loss = loss_logic_fn(heatmap, guassian_mask, mask, reduction = "none")
                 guassian_mask=guassian_mask/guassian_mask.sum(dim=(2,3), keepdim=True)
@@ -294,7 +287,7 @@ class Tester(object):
     def validate(self, net, noise=0, norm_type = np.inf, max_iter = 100):
         #self.evaluater.reset()
 
-        net.eval()
+        
         distance_list = dict()
         mean_list = dict()
         for i in range(19):
@@ -309,19 +302,39 @@ class Tester(object):
         logic_loss_list = list()
         
         dataset_val = Cephalometric(self.datapath, "test2")
-        dataloader_val = DataLoader(dataset_val, batch_size=1, shuffle=False, num_workers=self.nWorkers)
+        dataloader_val = DataLoader(dataset_val, batch_size=16, shuffle=False, num_workers=self.nWorkers)
         evaluater = Evaluater(self.logger, dataset_val.size, dataset_val.original_size)
         Radius = dataset_val.Radius
+        net.eval()
+
+        l1 = []
+        l2 = []
+        l3 = []
+        l4 = []
+        l5 = []
+        l6 = []
         for img, mask, guassian_mask, offset_y, offset_x, landmark_list in tqdm(dataloader_val):
             img, mask, offset_y, offset_x, guassian_mask = img.cuda(), mask.cuda(), \
                 offset_y.cuda(), offset_x.cuda(), guassian_mask.cuda()
-            with torch.no_grad():
-                if noise == 0:
-                    heatmap, regression_y, regression_x = net(img)
-                else:
-                    step = 5*noise/max_iter
-                    imgn = pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, noise, norm_type, max_iter, step)
-                    heatmap, regression_y, regression_x = net(imgn)
+            
+            if noise > 0:
+                step = 5*noise/max_iter
+                img = pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, noise, norm_type, max_iter, step, \
+                                  loss_fn = total_loss)
+                    
+            for i in range(img.size(0)):
+                l1.append(img[i].view(1,img.size(1),img.size(2),img.size(3)))
+                l2.append(mask[i].view(1,mask.size(1),mask.size(2),mask.size(3)))
+                l3.append(guassian_mask[i].view(1,guassian_mask.size(1),guassian_mask.size(2),guassian_mask.size(3)))
+                l4.append(offset_y[i].view(1,offset_y.size(1),offset_y.size(2),offset_y.size(3)))
+                l5.append(offset_x[i].view(1,offset_x.size(1),offset_x.size(2),offset_x.size(3)))
+                l6.append([[landmark_list[j][0][i],landmark_list[j][1][i]]  for j in range(19)])
+            
+        local_dataloader_val = [l1,l2,l3,l4,l5,l6]
+        
+        for img, mask, guassian_mask, offset_y, offset_x, landmark_list in tqdm(zip(*local_dataloader_val)):            
+            with torch.no_grad():    
+                heatmap, regression_y, regression_x = net(img)
                 
                 logic_loss = loss_logic_fn(heatmap, guassian_mask)
                 regression_loss_y = loss_regression_fn(regression_y, offset_y, mask)
@@ -333,7 +346,7 @@ class Tester(object):
                 train_loss_list.append(loss)
                 regression_loss_list.append(loss_regression)
                 logic_loss_list.append(logic_loss)
-                # Vote for the final accurate point
+                # Vote for the final accurate point, the batch size must be 1 here
                 pred_landmark = voting(heatmap, regression_y, regression_x, Radius)
     
                 evaluater.record(pred_landmark, landmark_list)
@@ -349,7 +362,7 @@ class Tester(object):
 
 if __name__ == "__main__":
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
-    os.environ["CUDA_VISIBLE_DEVICES"]="1"
+    os.environ["CUDA_VISIBLE_DEVICES"]="2"
     # Parse command line options
     parser = argparse.ArgumentParser(description="get the threshold from already trained base model")
     parser.add_argument("--tag", default='getThreshold', help="position of the output dir")
@@ -367,26 +380,26 @@ if __name__ == "__main__":
     iteration = 149
     #file folders================
     folders = ["base_400_320", "PGD_0.3", "IMA_400_320"]
-    toy_folders = ["base_400_320"]
+    #folders = ["base_400_320"]
     #========================
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots(1,4, figsize = (20,5))
     noises = [0,0.1,0.2,0.3]
-    toy_noises = [0,0.1]
+    #noises = [0]
     cols = ['b','g','r','y','k','m','c']
-    for i, folder in enumerate(toy_folders):
+    for i, folder in enumerate(folders):
         MRE_list =list()
         BCE_list = list()
         Reg_list = list()
-        for noise in toy_noises:
-            with open(os.path.join("./runs/"+folder, args.config_file), "r") as f:
+        for noise in noises:
+            with open(os.path.join("./results/"+folder, args.config_file), "r") as f:
                 config = yaml.load(f, Loader=yamlloader.ordereddict.CLoader)     
             # Create Logger
             logger = get_mylogger()
             # Load model
             net = UNet_Pretrained(3, config['num_landmarks']).cuda()   
             logger.info("Loading checkpoints from epoch {}".format(iteration))
-            checkpoints = torch.load("./runs/"+folder+"/model_epoch_{}.pth".format(iteration))
+            checkpoints = torch.load("./results/"+folder+"/model_epoch_{}.pth".format(iteration))
             newCP = dict()
             #adjust the keys(remove the "module.")
             for k in checkpoints.keys():
@@ -399,7 +412,8 @@ if __name__ == "__main__":
             
             # test
             net.load_state_dict(newCP)
-            #net = torch.nn.DataParallel(net)
+            net = torch.nn.DataParallel(net)
+            net = net.cuda()
             #tester = Tester(logger, config, net, args.tag, args.train, args)
             tester = Tester(logger, config, tag=args.tag)
             MRE, loss_val, loss_logic,  loss_reg = tester.validate(net, noise = noise)

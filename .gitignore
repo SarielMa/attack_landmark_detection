@@ -4,3 +4,4 @@ dataset/
 *.sh
 .vscode/
 *.png
+*.pth
