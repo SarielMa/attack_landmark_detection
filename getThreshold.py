@@ -16,7 +16,7 @@ from mylogger import get_mylogger, set_logger_dir
 from eval import Evaluater
 from utils import to_Image, voting, visualize, make_dir
 from attack import FGSMAttack
-
+from statsmodels.robust.scale import huber
 
 
 def L1Loss(pred, gt, mask=None):
@@ -92,8 +92,8 @@ class Tester(object):
                 bce= loss_logic_fn(heatmap, guassian_mask)
                 # r rario
                 #logic_loss = loss_logic_fn(heatmap, guassian_mask, mask, reduction = "none")
-                guassian_mask=guassian_mask/guassian_mask.sum(dim=(2,3), keepdim=True)
-                heatmap=heatmap/heatmap.sum(dim=(2,3), keepdim=True)
+                guassian_mask=guassian_mask/torch.norm(guassian_mask, p=2, keepdim=True)
+                heatmap=heatmap/torch.norm(heatmap, p=2, keepdim=True)
                 r=(heatmap*guassian_mask).sum(dim=(2,3))
                 r=r.mean(dim = 1)
                 # the loss for offset
@@ -123,9 +123,12 @@ class Tester(object):
         ax[2].legend() 
         ax[3].legend()
         fig.savefig("./threshold_distribution_of_training_data.png")
-        return rList.mean(), ryList.mean(), rxList.mean()       
+        
+        return estimateMean(rList), estimateMean(ryList), estimateMean(rxList)       
 
-
+def estimateMean(l):
+    mean,std = np.mean(l),np.std(l)
+    return huber(l)[0].item()
 if __name__ == "__main__":
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
     os.environ["CUDA_VISIBLE_DEVICES"]="1"
@@ -150,7 +153,7 @@ if __name__ == "__main__":
     logger = get_mylogger()
         
 
-    iteration = 229
+    iteration = 149
     
     # Load model
     # net = UNet(3, config['num_landmarks']).cuda()

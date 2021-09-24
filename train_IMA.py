@@ -332,8 +332,8 @@ def l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offs
     loss_regression_fn = L1Loss
     # the loss for heatmap
     #logic_loss = loss_logic_fn(heatmap, guassian_mask, mask, reduction = "none")
-    guassian_mask=guassian_mask/guassian_mask.sum(dim=(2,3), keepdim=True)
-    heatmap=heatmap/heatmap.sum(dim=(2,3), keepdim=True)
+    guassian_mask=guassian_mask/torch.norm(guassian_mask, p=2, keepdim=True)
+    heatmap=heatmap/torch.norm(heatmap, p=2, keepdim=True)
     r=(heatmap*guassian_mask).sum(dim=(2,3))
     r=r.mean(dim = 1)
     # the loss for offset
@@ -369,9 +369,9 @@ def classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y
     return Yp_e_Y
 #
 def classify_model_adv_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
-    threshold1=0.0006662592059001327
-    threshold2=0.0892745852470398
-    threshold3 = 0.07549695670604706
+    threshold1=0.04883306650141619
+    threshold2=0.08987738409148424
+    threshold3 = 0.07140998167140004
     r, ry, rx= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
     Yp_e_Y=(r<=threshold1) & (ry <=threshold2) & (rx <= threshold3)
     return Yp_e_Y
@@ -479,16 +479,18 @@ def IMA_update_margin(E, delta, max_margin, flag1, flag2, margin_new):
     E.clamp_(min=0, max=max_margin)
 
 if __name__ == "__main__":
-    #CUDA_VISIBLE_DEVICES=0
-    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
-    os.environ["CUDA_VISIBLE_DEVICES"]="1"
+
     #device = torch.device('cuda:1')
     # Parse command line options
     parser = argparse.ArgumentParser(description="Train Unet landmark detection network")
     parser.add_argument("--tag", default='train', help="name of the run")
+    parser.add_argument_group("--cuda", default = '1')
     parser.add_argument("--config_file", default="config.yaml", help="default configs")
     args = parser.parse_args()
  
+    #CUDA_VISIBLE_DEVICES=0
+    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
+    os.environ["CUDA_VISIBLE_DEVICES"]=args.cuda
     # Load yaml config file
     with open(args.config_file) as f:
         config = yaml.load(f, Loader=yamlloader.ordereddict.CLoader)
@@ -539,13 +541,13 @@ if __name__ == "__main__":
     #======================
     
     sample_count_train = 150
-    noise = 1.0
+    noise = 40
     epoch_refine = config['num_epochs']
-    delta = 5*noise/epoch_refine
+    delta = 10*noise/epoch_refine
     E = delta*torch.ones(sample_count_train, dtype=torch.float32)
-    alpha = 4    
+    alpha = 5    
     max_iter=20   
-    norm_type = np.inf
+    norm_type = 2
     #======================
     
     loss_train_list = list()

@@ -210,15 +210,18 @@ def pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask,
 #%%
 
 if __name__ == "__main__":
-    #CUDA_VISIBLE_DEVICES=0
-    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
-    os.environ["CUDA_VISIBLE_DEVICES"]="1"
+
     #device = torch.device('cuda:1')
     # Parse command line options
     parser = argparse.ArgumentParser(description="Train Unet landmark detection network")
     parser.add_argument("--tag", default='pgd_0.3', help="name of the run")
+    parser.add_argument("--cuda", default='0', help="cuda id")
     parser.add_argument("--config_file", default="config.yaml", help="default configs")
     args = parser.parse_args()
+    
+    #CUDA_VISIBLE_DEVICES=0
+    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
+    os.environ["CUDA_VISIBLE_DEVICES"]=args.cuda
  
     # Load yaml config file
     with open(args.config_file) as f:
@@ -261,7 +264,7 @@ if __name__ == "__main__":
     #======================
     noise = float(args.tag.split("_")[1])
     assert(type(noise) == float)
-    norm_type = np.inf
+    norm_type = 2
     max_iter = 20
     step = 5*noise/max_iter
     title = "PGD"

@@ -284,7 +284,7 @@ class Tester(object):
         fig.savefig("./threshold_distribution_of_training_data.png")
         return rList.mean(), ryList.mean(), rxList.mean()  
      
-    def validate(self, net, noise=0, norm_type = np.inf, max_iter = 100):
+    def validate(self, net, noise=0, norm_type = 2, max_iter = 100):
         #self.evaluater.reset()
 
         
@@ -379,12 +379,12 @@ if __name__ == "__main__":
 
     iteration = 149
     #file folders================
-    folders = ["base_400_320", "PGD_0.3", "IMA_400_320"]
+    folders = ["base_400_320", "IMA_40","PGD_10","PGD_20","PGD_40"]
     #folders = ["base_400_320"]
     #========================
     import matplotlib.pyplot as plt
-    fig, ax = plt.subplots(1,4, figsize = (20,5))
-    noises = [0,0.1,0.2,0.3]
+    fig, ax = plt.subplots(1,3, figsize = (15,5))
+    noises = [0,10,20,40]
     #noises = [0]
     cols = ['b','g','r','y','k','m','c']
     for i, folder in enumerate(folders):
