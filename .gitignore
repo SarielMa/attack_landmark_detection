@@ -5,3 +5,4 @@ dataset/
 .vscode/
 *.png
 *.pth
+*.csv

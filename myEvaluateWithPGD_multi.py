@@ -362,7 +362,7 @@ class Tester(object):
 
 if __name__ == "__main__":
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
-    os.environ["CUDA_VISIBLE_DEVICES"]="2"
+    os.environ["CUDA_VISIBLE_DEVICES"]="1"
     # Parse command line options
     parser = argparse.ArgumentParser(description="get the threshold from already trained base model")
     parser.add_argument("--tag", default='getThreshold', help="position of the output dir")
@@ -379,14 +379,15 @@ if __name__ == "__main__":
 
     iteration = 149
     #file folders================
-    folders = ["base_400_320", "IMA_40","PGD_10","PGD_20","PGD_40"]
+    folders = ["base_400_320","PGD_40","PGD_60","PGD_20","IMA_60_2Z"]
     #folders = ["base_400_320"]
     #========================
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots(1,3, figsize = (15,5))
-    noises = [0,10,20,40]
+    noises = [0,20, 40, 60]
     #noises = [0]
     cols = ['b','g','r','y','k','m','c']
+    rows2 = []
     for i, folder in enumerate(folders):
         MRE_list =list()
         BCE_list = list()
@@ -422,6 +423,7 @@ if __name__ == "__main__":
             BCE_list.append(loss_logic)
             Reg_list.append(loss_reg)
         ax[0].plot(noises,MRE_list, color = cols[i], label = folder )
+        rows2.append([folder]+[str(round(i,3)) for i in MRE_list])
         ax[1].plot(noises,BCE_list, color = cols[i], label = folder )
         ax[2].plot(noises,Reg_list, color = cols[i], label = folder )
         ax[0].set_ylabel("MRE")
@@ -430,8 +432,13 @@ if __name__ == "__main__":
         ax[0].legend()
         ax[1].legend()
         ax[2].legend()
-    fig.savefig("./results/result.pdf",bbox_inches='tight') 
         
+    fig.savefig("./results/result.pdf",bbox_inches='tight') 
+    fields = ["noise"]+[str(i) for i in noises]
+    with open("result_MRE.csv",'w') as csvfile:
+        csvwriter = csv.writer(csvfile)
+        csvwriter.writerow(fields)
+        csvwriter.writerows(rows2)         
         
         
         

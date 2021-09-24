@@ -369,9 +369,9 @@ def classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y
     return Yp_e_Y
 #
 def classify_model_adv_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
-    threshold1=0.04883306650141619
-    threshold2=0.08987738409148424
-    threshold3 = 0.07140998167140004
+    threshold1=0.04982433055775556
+    threshold2=0.11666314694952336
+    threshold3 = 0.09624836299354556
     r, ry, rx= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
     Yp_e_Y=(r<=threshold1) & (ry <=threshold2) & (rx <= threshold3)
     return Yp_e_Y
@@ -484,7 +484,7 @@ if __name__ == "__main__":
     # Parse command line options
     parser = argparse.ArgumentParser(description="Train Unet landmark detection network")
     parser.add_argument("--tag", default='train', help="name of the run")
-    parser.add_argument_group("--cuda", default = '1')
+    parser.add_argument("--cuda", default = '1')
     parser.add_argument("--config_file", default="config.yaml", help="default configs")
     args = parser.parse_args()
  
@@ -541,7 +541,7 @@ if __name__ == "__main__":
     #======================
     
     sample_count_train = 150
-    noise = 40
+    noise = 60
     epoch_refine = config['num_epochs']
     delta = 10*noise/epoch_refine
     E = delta*torch.ones(sample_count_train, dtype=torch.float32)
