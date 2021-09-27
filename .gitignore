@@ -6,3 +6,7 @@ dataset/
 *.png
 *.pth
 *.csv
+*.pdf
+*.yaml
+*.yaml
+*.pdf

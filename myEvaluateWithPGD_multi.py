@@ -358,6 +358,81 @@ class Tester(object):
         MRE, _ = evaluater.my_cal_metrics()
 
         return MRE, loss, logic_loss, loss_reg
+    
+    def test(self, net, noise=0, norm_type = 2, max_iter = 100):
+        #self.evaluater.reset()
+
+        
+        distance_list = dict()
+        mean_list = dict()
+        for i in range(19):
+            distance_list[i] = list()
+            mean_list[i] = list()
+
+        loss_logic_fn = BCELoss()
+        loss_regression_fn = L1Loss
+        
+        train_loss_list = list()
+        regression_loss_list = list()   
+        logic_loss_list = list()
+        
+        dataset_val = Cephalometric(self.datapath, "test2")
+        dataloader_val = DataLoader(dataset_val, batch_size=16, shuffle=False, num_workers=self.nWorkers)
+        evaluater = Evaluater(self.logger, dataset_val.size, dataset_val.original_size)
+        Radius = dataset_val.Radius
+        net.eval()
+
+        l1 = []
+        l2 = []
+        l3 = []
+        l4 = []
+        l5 = []
+        l6 = []
+        for img, mask, guassian_mask, offset_y, offset_x, landmark_list in tqdm(dataloader_val):
+            img, mask, offset_y, offset_x, guassian_mask = img.cuda(), mask.cuda(), \
+                offset_y.cuda(), offset_x.cuda(), guassian_mask.cuda()
+            
+            if noise > 0:
+                step = 5*noise/max_iter
+                img = pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, noise, norm_type, max_iter, step, \
+                                  loss_fn = total_loss)
+                    
+            for i in range(img.size(0)):
+                l1.append(img[i].view(1,img.size(1),img.size(2),img.size(3)))
+                l2.append(mask[i].view(1,mask.size(1),mask.size(2),mask.size(3)))
+                l3.append(guassian_mask[i].view(1,guassian_mask.size(1),guassian_mask.size(2),guassian_mask.size(3)))
+                l4.append(offset_y[i].view(1,offset_y.size(1),offset_y.size(2),offset_y.size(3)))
+                l5.append(offset_x[i].view(1,offset_x.size(1),offset_x.size(2),offset_x.size(3)))
+                l6.append([[landmark_list[j][0][i],landmark_list[j][1][i]]  for j in range(19)])
+            
+        local_dataloader_val = [l1,l2,l3,l4,l5,l6]
+        
+        for img, mask, guassian_mask, offset_y, offset_x, landmark_list in tqdm(zip(*local_dataloader_val)):            
+            with torch.no_grad():    
+                heatmap, regression_y, regression_x = net(img)
+                
+                logic_loss = loss_logic_fn(heatmap, guassian_mask)
+                regression_loss_y = loss_regression_fn(regression_y, offset_y, mask)
+                regression_loss_x = loss_regression_fn(regression_x, offset_x, mask)
+    
+                loss = logic_loss + regression_loss_x + regression_loss_y
+                loss_regression = regression_loss_y + regression_loss_x
+                # acc them
+                train_loss_list.append(loss)
+                regression_loss_list.append(loss_regression)
+                logic_loss_list.append(logic_loss)
+                # Vote for the final accurate point, the batch size must be 1 here
+                pred_landmark = voting(heatmap, regression_y, regression_x, Radius)
+    
+                evaluater.record(pred_landmark, landmark_list)
+            
+        loss = sum(train_loss_list) / dataset_val.__len__()
+        logic_loss = sum(logic_loss_list) / dataset_val.__len__()
+        loss_reg = sum(regression_loss_list) / dataset_val.__len__()  
+          
+        MRE, SDR = evaluater.my_cal_metrics()
+
+        return MRE,SDR[0], SDR[1], SDR[2],SDR[3]
 
 
 if __name__ == "__main__":
@@ -379,19 +454,26 @@ if __name__ == "__main__":
 
     iteration = 149
     #file folders================
-    folders = ["base_400_320","PGD_40","PGD_60","PGD_20","IMA_60_2Z"]
+    folders = ["base_400_320","PGD_5","PGD_10","IMA_40_mean"]
+    folders = ["PGD_5","IMA_40_mean"]
     #folders = ["base_400_320"]
     #========================
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots(1,3, figsize = (15,5))
-    noises = [0,20, 40, 60]
+    noises = [0,1]
     #noises = [0]
     cols = ['b','g','r','y','k','m','c']
+    rows1 = []
     rows2 = []
+    rows3 = []
+    rows4 = []
+    rows5 = []
     for i, folder in enumerate(folders):
         MRE_list =list()
-        BCE_list = list()
-        Reg_list = list()
+        SDR2_list = list()
+        SDR25_list = list()
+        SDR3_list = list()
+        SDR4_list = list()
         for noise in noises:
             with open(os.path.join("./results/"+folder, args.config_file), "r") as f:
                 config = yaml.load(f, Loader=yamlloader.ordereddict.CLoader)     
@@ -417,28 +499,68 @@ if __name__ == "__main__":
             net = net.cuda()
             #tester = Tester(logger, config, net, args.tag, args.train, args)
             tester = Tester(logger, config, tag=args.tag)
-            MRE, loss_val, loss_logic,  loss_reg = tester.validate(net, noise = noise)
-            logger.info("Testing MRE {},  loss {}, logic loss {}, reg loss {}".format(MRE, loss_val, loss_logic, loss_reg))
+            #MRE, loss_val, loss_logic,  loss_reg = tester.validate(net, noise = noise)
+            MRE, SDR2, SDR2_5,SDR3, SDR4 = tester.test(net, noise = noise)
+            #logger.info("Testing MRE {},  loss {}, logic loss {}, reg loss {}".format(MRE, loss_val, loss_logic, loss_reg))
             MRE_list.append(MRE)
-            BCE_list.append(loss_logic)
-            Reg_list.append(loss_reg)
+            SDR2_list.append(SDR2)
+            SDR25_list.append(SDR2_5)
+            SDR3_list.append(SDR3)
+            SDR4_list.append(SDR4)
+            
         ax[0].plot(noises,MRE_list, color = cols[i], label = folder )
-        rows2.append([folder]+[str(round(i,3)) for i in MRE_list])
-        ax[1].plot(noises,BCE_list, color = cols[i], label = folder )
-        ax[2].plot(noises,Reg_list, color = cols[i], label = folder )
+        rows1.append([folder]+[str(round(i,3)) for i in MRE_list])
+        ax[1].plot(noises,SDR2_list, color = cols[i], label = folder )
+        rows2.append([folder]+[str(round(i,3)) for i in SDR2_list])
+        ax[2].plot(noises,SDR25_list, color = cols[i], label = folder )
+        rows3.append([folder]+[str(round(i,3)) for i in SDR25_list])
+        ax[3].plot(noises,SDR3_list, color = cols[i], label = folder )
+        rows4.append([folder]+[str(round(i,3)) for i in SDR3_list])
+        ax[4].plot(noises,SDR4_list, color = cols[i], label = folder )
+        rows5.append([folder]+[str(round(i,3)) for i in SDR4_list])
         ax[0].set_ylabel("MRE")
-        ax[1].set_ylabel("BCE")
-        ax[2].set_ylabel("RegMAE")
+        ax[1].set_ylabel("SDR2")
+        ax[2].set_ylabel("SDR2.5")
+        ax[3].set_ylabel("SDR3")
+        ax[4].set_ylabel("SDR4")
+
         ax[0].legend()
         ax[1].legend()
         ax[2].legend()
+        ax[3].legend()
+        ax[4].legend()
         
     fig.savefig("./results/result.pdf",bbox_inches='tight') 
-    fields = ["noise"]+[str(i) for i in noises]
-    with open("result_MRE.csv",'w') as csvfile:
+    
+    fields1 = ["noise"]+[str(i) for i in noises]
+    with open("./results/result_MRE.csv",'w') as csvfile:
         csvwriter = csv.writer(csvfile)
-        csvwriter.writerow(fields)
-        csvwriter.writerows(rows2)         
+        csvwriter.writerow(fields1)
+        csvwriter.writerows(rows1)        
+        
+    fields2 = ["noise"]+[str(i) for i in noises]
+    with open("./results/result_SDR2.csv",'w') as csvfile:
+        csvwriter = csv.writer(csvfile)
+        csvwriter.writerow(fields2)
+        csvwriter.writerows(rows2)  
+        
+    fields3 = ["noise"]+[str(i) for i in noises]
+    with open("./results/result_SDR2.5.csv",'w') as csvfile:
+        csvwriter = csv.writer(csvfile)
+        csvwriter.writerow(fields3)
+        csvwriter.writerows(rows3)  
+        
+    fields4 = ["noise"]+[str(i) for i in noises]
+    with open("./results/result_SDR3.csv",'w') as csvfile:
+        csvwriter = csv.writer(csvfile)
+        csvwriter.writerow(fields4)
+        csvwriter.writerows(rows4)  
+        
+    fields5 = ["noise"]+[str(i) for i in noises]
+    with open("./results/result_SDR4.csv",'w') as csvfile:
+        csvwriter = csv.writer(csvfile)
+        csvwriter.writerow(fields5)
+        csvwriter.writerows(rows5)  
         
         
         

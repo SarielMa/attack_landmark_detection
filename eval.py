@@ -122,7 +122,7 @@ class Evaluater(object):
         for radius in self.recall_radius:
             total = temp.size
             shot = (temp < radius).sum()
-            res = shot * 100 / total
+            res = shot / total
             reses.append(res)
             self.logger.info("ALL SDR {}mm  {}".format\
                 (radius,res))
