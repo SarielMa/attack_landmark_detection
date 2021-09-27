@@ -362,8 +362,8 @@ def run_model_adv_reg(net, img, mask, offset_y, offset_x, guassian_mask, return_
 #
 def classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
     threshold1=1
-    threshold2=80
-    threshold3 = 80
+    threshold2=10000
+    threshold3 = 10000
     r, ry, rx= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
     Yp_e_Y=(r<=threshold1) & (ry <=threshold2) & (rx <= threshold3)
     return Yp_e_Y
@@ -541,9 +541,9 @@ if __name__ == "__main__":
     #======================
     
     sample_count_train = 150
-    noise = 60
+    noise = float(args.tag.split("_")[1])
     epoch_refine = config['num_epochs']
-    delta = 10*noise/epoch_refine
+    delta = 15*noise/epoch_refine
     E = delta*torch.ones(sample_count_train, dtype=torch.float32)
     alpha = 5    
     max_iter=20   

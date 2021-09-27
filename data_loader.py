@@ -59,7 +59,7 @@ class Cephalometric(data.Dataset):
             end = 300
         else:
             self.pth_Image = os.path.join(self.pth_Image, 'Test2Data')
-            start = 301
+            start = 399
             end = 400
         
         normalize = transforms.Normalize([0.5], [0.5])
@@ -180,7 +180,7 @@ class Cephalometric_IMA(data.Dataset):
             end = 300
         else:
             self.pth_Image = os.path.join(self.pth_Image, 'Test2Data')
-            start = 301
+            start = 300
             end = 400
         
         normalize = transforms.Normalize([0.5], [0.5])

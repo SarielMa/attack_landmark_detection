@@ -454,12 +454,13 @@ if __name__ == "__main__":
 
     iteration = 149
     #file folders================
-    folders = ["base_400_320","PGD_5","PGD_10","IMA_40_mean"]
-    folders = ["PGD_5","IMA_40_mean"]
+    folders = ["base_400_320","PGD_5","IMA_40_mean"]
+    #folders = ["PGD_5","IMA_40_mean"]
     #folders = ["base_400_320"]
     #========================
     import matplotlib.pyplot as plt
-    fig, ax = plt.subplots(1,5, figsize = (25,8))
+    #fig, ax = plt.subplots(3,2, figsize = (10,15))
+    plt.figure(figsize = (10,15))
     noises = [0,1]
     #noises = [0]
     cols = ['b','g','r','y','k','m','c']
@@ -508,29 +509,47 @@ if __name__ == "__main__":
             SDR3_list.append(SDR3)
             SDR4_list.append(SDR4)
             
-        ax[0].plot(noises,MRE_list, color = cols[i], label = folder )
+        plt.subplot(3,1,1)
+        plt.yscale("log")
+        plt.plot(noises,MRE_list, color = cols[i], label = folder )
+        plt.ylabel("MRE")
+        plt.xlabel("noise (L2)")
+        plt.legend()    
         rows1.append([folder]+[str(round(i,3)) for i in MRE_list])
-        ax[1].plot(noises,SDR2_list, color = cols[i], label = folder )
-        rows2.append([folder]+[str(round(i,3)) for i in SDR2_list])
-        ax[2].plot(noises,SDR25_list, color = cols[i], label = folder )
-        rows3.append([folder]+[str(round(i,3)) for i in SDR25_list])
-        ax[3].plot(noises,SDR3_list, color = cols[i], label = folder )
-        rows4.append([folder]+[str(round(i,3)) for i in SDR3_list])
-        ax[4].plot(noises,SDR4_list, color = cols[i], label = folder )
-        rows5.append([folder]+[str(round(i,3)) for i in SDR4_list])
-        ax[0].set_ylabel("MRE")
-        ax[1].set_ylabel("SDR2")
-        ax[2].set_ylabel("SDR2.5")
-        ax[3].set_ylabel("SDR3")
-        ax[4].set_ylabel("SDR4")
-
-        ax[0].legend()
-        ax[1].legend()
-        ax[2].legend()
-        ax[3].legend()
-        ax[4].legend()
         
-    fig.savefig("./results/result.pdf",bbox_inches='tight') 
+        
+        
+        plt.subplot(3,2,3)
+        plt.plot(noises,SDR2_list, color = cols[i], label = folder )
+        plt.ylabel("SDR 2mm")
+        plt.xlabel("noise (L2)")
+        plt.legend() 
+        rows2.append([folder]+[str(round(i,3)) for i in SDR2_list])
+        
+        plt.subplot(3,2,4)
+        plt.plot(noises,SDR25_list, color = cols[i], label = folder )
+        plt.ylabel("SDR 2.5mm")
+        plt.xlabel("noise (L2)")
+        plt.legend()
+        rows3.append([folder]+[str(round(i,3)) for i in SDR25_list])
+        
+        
+        plt.subplot(3,2,5)
+        plt.plot(noises,SDR3_list, color = cols[i], label = folder )
+        plt.ylabel("SDR 3mm")
+        plt.xlabel("noise (L2)")
+        plt.legend()
+        rows4.append([folder]+[str(round(i,3)) for i in SDR3_list])
+        
+        plt.subplot(3,2,6)
+        plt.plot(noises,SDR4_list, color = cols[i], label = folder )
+        plt.ylabel("SDR 4mm")
+        plt.xlabel("noise (L2)")
+        plt.legend()
+        rows5.append([folder]+[str(round(i,3)) for i in SDR4_list])
+        
+        
+    plt.savefig("./results/result.pdf",bbox_inches='tight') 
     
     fields1 = ["noise"]+[str(i) for i in noises]
     with open("./results/result_MRE.csv",'w') as csvfile:
