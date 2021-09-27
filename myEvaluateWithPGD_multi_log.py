@@ -512,7 +512,7 @@ if __name__ == "__main__":
         plt.subplot(3,1,1)
         plt.yscale("log")
         plt.plot(noises,MRE_list, color = cols[i], label = folder )
-        plt.ylabel("MRE")
+        plt.ylabel("log(MRE)")
         plt.xlabel("noise (L2)")
         plt.legend()    
         rows1.append([folder]+[str(round(i,3)) for i in MRE_list])
