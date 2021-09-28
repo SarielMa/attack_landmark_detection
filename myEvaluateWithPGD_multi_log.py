@@ -454,14 +454,14 @@ if __name__ == "__main__":
 
     iteration = 149
     #file folders================
-    folders = ["base_400_320","PGD_5","IMA_40_mean"]
+    folders = ["base_400_320","PGD_5","PGD_1","PGD_10","IMA_10_3Z","IMA_10_3Z"]
     #folders = ["PGD_5","IMA_40_mean"]
     #folders = ["base_400_320"]
     #========================
     import matplotlib.pyplot as plt
     #fig, ax = plt.subplots(3,2, figsize = (10,15))
     plt.figure(figsize = (10,15))
-    noises = [0,1]
+    noises = [0,1,3,5,10]
     #noises = [0]
     cols = ['b','g','r','y','k','m','c']
     rows1 = []
