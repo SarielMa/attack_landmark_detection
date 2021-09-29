@@ -369,9 +369,9 @@ def classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y
     return Yp_e_Y
 #
 def classify_model_adv_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
-    threshold1=0.04998284206114331
-    threshold2=0.02730599911470634
-    threshold3 = 0.026358927863965178
+    threshold1=0.050360882681789065
+    threshold2=0.03047704552299259
+    threshold3 = 0.029892717434369376
     r, ry, rx= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
     Yp_e_Y=(r<=threshold1) & (ry <=threshold2) & (rx <= threshold3)
     return Yp_e_Y

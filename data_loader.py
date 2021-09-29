@@ -59,7 +59,7 @@ class Cephalometric(data.Dataset):
             end = 300
         else:
             self.pth_Image = os.path.join(self.pth_Image, 'Test2Data')
-            start = 399
+            start = 301
             end = 400
         
         normalize = transforms.Normalize([0.5], [0.5])

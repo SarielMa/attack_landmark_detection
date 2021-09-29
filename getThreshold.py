@@ -76,7 +76,7 @@ class Tester(object):
         rx_list = list()
         bce_list = list()
         
-        dataset_train = Cephalometric(self.datapath, "train")
+        dataset_train = Cephalometric(self.datapath, "Train")
         dataloader_train = DataLoader(dataset_train, batch_size=1, shuffle=False, num_workers=self.nWorkers)
         
         for img, mask, guassian_mask, offset_y, offset_x, landmark_list in tqdm(dataloader_train):
@@ -114,22 +114,22 @@ class Tester(object):
         import matplotlib.pyplot as plt
         cols = ['b','g','r','y','k','m','c']
         fig, ax = plt.subplots(1,4, figsize=(20,5))
-        ax[0].hist(rList,  bins=50, color=cols[0], label="distribution of ratio")
-        ax[1].hist(ryList,bins=50, color=cols[1], label="distribution of offset y error")
-        ax[2].hist(rxList,bins=50, color=cols[2], label="distribution of offset x error")
-        ax[3].hist(bcelist,bins=50, color=cols[3], label="distribution of BCE")
+        ax[0].hist(rList,  bins=20, color=cols[0], label="distribution of ratio")
+        ax[1].hist(ryList,bins=20, color=cols[1], label="distribution of offset y error")
+        ax[2].hist(rxList,bins=20, color=cols[2], label="distribution of offset x error")
+        ax[3].hist(bcelist,bins=20, color=cols[3], label="distribution of BCE")
         ax[0].legend()
         ax[1].legend()
         ax[2].legend() 
         ax[3].legend()
         fig.savefig("./threshold_distribution_of_training_data.png")
         
-        return estimateMean(rList), estimateMean(ryList), estimateMean(rxList)       
+        return estimateMean(rList), estimateMean(ryList), estimateMean(rxList), estimateMean(bcelist)       
 
 def estimateMean(l):
     mean,std = np.mean(l),np.std(l)
     # one z score
-    return huber(l)[0].item()+3*huber(l)[1].item()
+    return huber(l)[0].item()+1*huber(l)[1].item()
 if __name__ == "__main__":
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
     os.environ["CUDA_VISIBLE_DEVICES"]="1"
@@ -178,8 +178,8 @@ if __name__ == "__main__":
     net = torch.nn.DataParallel(net)
     #tester = Tester(logger, config, net, args.tag, args.train, args)
     tester = Tester(logger, config, tag=args.tag)
-    t1, t2, t3 = tester.getThresholds(net)
-    logger.info("the threshold 1 is {}, threshold 2 ry is {}, threshold 3 rx is {}".format(t1, t2, t3))
+    t1, t2, t3, t4 = tester.getThresholds(net)
+    logger.info("the threshold 1 is {}, threshold 2 ry is {}, threshold 3 rx is {}, threshold 4 bce is {}".format(t1, t2, t3, t4))
     # go through all the training set to get the thresholds, three
     
     
