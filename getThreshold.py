@@ -77,7 +77,7 @@ class Tester(object):
         bce_list = list()
         
         dataset_train = Cephalometric(self.datapath, "Train")
-        dataloader_train = DataLoader(dataset_train, batch_size=1, shuffle=False, num_workers=self.nWorkers)
+        dataloader_train = DataLoader(dataset_train, batch_size=8, shuffle=False, num_workers=self.nWorkers)
         
         for img, mask, guassian_mask, offset_y, offset_x, landmark_list in tqdm(dataloader_train):
             img, mask, offset_y, offset_x, guassian_mask = img.cuda(), mask.cuda(), \
@@ -92,8 +92,8 @@ class Tester(object):
                 bce= loss_logic_fn(heatmap, guassian_mask)
                 # r rario
                 #logic_loss = loss_logic_fn(heatmap, guassian_mask, mask, reduction = "none")
-                guassian_mask=guassian_mask/torch.norm(guassian_mask, p=2, keepdim=True)
-                heatmap=heatmap/torch.norm(heatmap, p=2, keepdim=True)
+                guassian_mask=guassian_mask/torch.norm(guassian_mask, p=2,dim = (2,3), keepdim=True)
+                heatmap=heatmap/torch.norm(heatmap, p=2,dim = (2,3), keepdim=True)
                 r=(heatmap*guassian_mask).sum(dim=(2,3))
                 r=r.mean(dim = 1)
                 # the loss for offset
@@ -129,7 +129,7 @@ class Tester(object):
 def estimateMean(l):
     mean,std = np.mean(l),np.std(l)
     # one z score
-    return huber(l)[0].item()+1*huber(l)[1].item()
+    return huber(l)[0].item()-1*huber(l)[1].item()
 if __name__ == "__main__":
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
     os.environ["CUDA_VISIBLE_DEVICES"]="1"

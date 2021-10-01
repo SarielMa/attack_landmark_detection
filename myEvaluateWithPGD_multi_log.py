@@ -567,7 +567,7 @@ if __name__ == "__main__":
         rows5.append([folder]+[str(round(i,3)) for i in SDR4_list])
         
         
-    plt.savefig(os.path.join(resultDir,"result.pdf",bbox_inches='tight'))
+    plt.savefig(os.path.join(resultDir,"result.pdf"),bbox_inches='tight')
     
     fields1 = ["noise"]+[str(i) for i in noises]
     with open(os.path.join(resultDir,"result_MRE.csv"),'w') as csvfile:

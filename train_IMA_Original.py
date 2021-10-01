@@ -326,8 +326,8 @@ def l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offs
     loss_regression_fn = L1Loss
     # the loss for heatmap
     #logic_loss = loss_logic_fn(heatmap, guassian_mask, mask, reduction = "none")
-    guassian_mask=guassian_mask/guassian_mask.sum(dim=(2,3), keepdim=True)
-    heatmap=heatmap/heatmap.sum(dim=(2,3), keepdim=True)
+    guassian_mask=guassian_mask/torch.norm(guassian_mask, p=2,dim = (2,3), keepdim=True)
+    heatmap=heatmap/torch.norm(heatmap, p=2,dim = (2,3), keepdim=True)
     r=(heatmap*guassian_mask).sum(dim=(2,3))
     r=r.mean(dim = 1)
     # the loss for offset
@@ -355,19 +355,19 @@ def run_model_adv_reg(net, img, mask, offset_y, offset_x, guassian_mask, return_
         return heatmap, regression_y, regression_x
 #
 def classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
-    threshold1=0.0006662592059001327
-    threshold2=0.0892745852470398
-    threshold3 = 0.07549695670604706
+    threshold1=0.9504748307864829
+    threshold2=0.026378647972244932
+    threshold3 = 0.024761134364726576
     r, ry, rx= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
-    Yp_e_Y=(r<=threshold1) & (ry <=threshold2) & (rx <= threshold3)
+    Yp_e_Y=(r>=threshold1) & (ry <=threshold2) & (rx <= threshold3)
     return Yp_e_Y
 #
 def classify_model_adv_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
-    threshold1=0.0006662592059001327
-    threshold2=0.0892745852470398
-    threshold3 = 0.07549695670604706
+    threshold1=0.9504748307864829
+    threshold2=0.026378647972244932
+    threshold3 = 0.024761134364726576
     r, ry, rx= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
-    Yp_e_Y=(r<=threshold1) & (ry <=threshold2) & (rx <= threshold3)
+    Yp_e_Y=(r>=threshold1) & (ry <=threshold2) & (rx <= threshold3)
     return Yp_e_Y
 
 def IMA_loss(net, img, mask, offset_y, offset_x, guassian_mask, 
