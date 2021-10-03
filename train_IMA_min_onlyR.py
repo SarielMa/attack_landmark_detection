@@ -276,7 +276,13 @@ def get_loss_function(z_size, reduction='sum'):
     else:
         return torch.nn.CrossEntropyLoss(reduction=reduction)
 
-
+def run_model(model, X):
+    Z=model(X)
+    if len(Z.size()) <= 1:
+        Yp = (Z.data>0).to(torch.int64)
+    else:
+        Yp = Z.data.max(dim=1)[1]
+    return Z, Yp
 
 def L1Loss(pred, gt, mask=None,reduction = "mean"):
     # L1 Loss for offset map
@@ -326,6 +332,11 @@ def l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offs
     loss_regression_fn = L1Loss
     # the loss for heatmap
     #logic_loss = loss_logic_fn(heatmap, guassian_mask, mask, reduction = "none")
+    #guassian_mask=guassian_mask/torch.norm(guassian_mask, p=2, keepdim=True)
+    #heatmap=heatmap/torch.norm(heatmap, p=2, keepdim=True)
+    #r=(heatmap*guassian_mask).sum(dim=(2,3))
+    #r=r.mean(dim = 1)
+    
     guassian_mask=guassian_mask/torch.norm(guassian_mask, p=2,dim = (2,3), keepdim=True)
     heatmap=heatmap/torch.norm(heatmap, p=2,dim = (2,3), keepdim=True)
     r=(heatmap*guassian_mask).sum(dim=(2,3))
@@ -355,19 +366,18 @@ def run_model_adv_reg(net, img, mask, offset_y, offset_x, guassian_mask, return_
         return heatmap, regression_y, regression_x
 #
 def classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
-    threshold1=0.9277680097904124
-    threshold2=0.0344853832236048
-    threshold3 = 0.03364063541152001
+    threshold1=0
+    threshold2=10000
+    threshold3 = 10000
     r, ry, rx= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
     Yp_e_Y=(r>=threshold1) & (ry <=threshold2) & (rx <= threshold3)
     return Yp_e_Y
 #
 def classify_model_adv_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
-    threshold1=0.9277680097904124
-    threshold2=0.0344853832236048
-    threshold3 = 0.03364063541152001
+    threshold1=0.9076504
+
     r, ry, rx= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
-    Yp_e_Y=(r>=threshold1) & (ry <=threshold2) & (rx <= threshold3)
+    Yp_e_Y=(r>=threshold1) 
     return Yp_e_Y
 
 def IMA_loss(net, img, mask, offset_y, offset_x, guassian_mask, 
@@ -411,37 +421,37 @@ def IMA_loss(net, img, mask, offset_y, offset_x, guassian_mask,
     train_mode=net.training# record the mode
     #---------------------------------
     # we ingore the re_initial, there is no need to use enable_loss3
-    
+    """
     enable_loss3=False
     if Yp_e_Y.sum().item()>0 and beta>0:
          enable_loss3=True
-    
+    """
     #----------------------------------
-    if enable_loss3 == True:
-        Xn, advc = repeated_pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, 
-                                               noise_norm=margin, norm_type=norm_type,
-                                               max_iter=max_iter, step=step,
-                                               rand_init_norm=rand_init_norm, rand_init_Xn=rand_init_Xn,
-                                               clip_X_min=clip_X_min, clip_X_max=clip_X_max,
-                                               refine_Xn_max_iter=refine_Xn_max_iter,
-                                               Xn1_equal_X=Xn1_equal_X,
-                                               Xn2_equal_Xn=Xn2_equal_Xn,
-                                               stop_near_boundary=stop_near_boundary,
-                                               stop_if_label_change=stop_if_label_change,
-                                               stop_if_label_change_next_step=stop_if_label_change_next_step,
-                                               use_optimizer=use_optimizer,
-                                               run_model=run_model_adv, classify_model_output=classify_model_adv_output,
-                                               num_repeats=pgd_num_repeats)
-        #--------------------------------------------
-    
-        if train_mode == True and net.training == False:
-            net.train()
-        #--------------------------------------------
-        idx_n=torch.arange(0,img.size(0))[Yp_e_Y]
-        h_n, reg_y_n, reg_x_n, loss_Xn=run_model_std(net, Xn, mask, offset_y, offset_x, guassian_mask,return_loss=True)
-        Xn=Xn[idx_n]
-        if idx_n.size(0)>0:   
-            loss3 = loss_Xn[idx_n].sum()/Xn.size(0)
+    #if enable_loss3 == True:
+    Xn, advc[Yp_e_Y] = repeated_pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, 
+                                           noise_norm=margin, norm_type=norm_type,
+                                           max_iter=max_iter, step=step,
+                                           rand_init_norm=rand_init_norm, rand_init_Xn=rand_init_Xn,
+                                           clip_X_min=clip_X_min, clip_X_max=clip_X_max,
+                                           refine_Xn_max_iter=refine_Xn_max_iter,
+                                           Xn1_equal_X=Xn1_equal_X,
+                                           Xn2_equal_Xn=Xn2_equal_Xn,
+                                           stop_near_boundary=stop_near_boundary,
+                                           stop_if_label_change=stop_if_label_change,
+                                           stop_if_label_change_next_step=stop_if_label_change_next_step,
+                                           use_optimizer=use_optimizer,
+                                           run_model=run_model_adv, classify_model_output=classify_model_adv_output,
+                                           num_repeats=pgd_num_repeats)
+    #--------------------------------------------
+
+    if train_mode == True and net.training == False:
+        net.train()
+    #--------------------------------------------
+    idx_n=torch.arange(0,img.size(0))[Yp_e_Y]
+    h_n, reg_y_n, reg_x_n, loss_Xn=run_model_std(net, Xn, mask, offset_y, offset_x, guassian_mask,return_loss=True)
+    Xn=Xn[idx_n]
+    if idx_n.size(0)>0:   
+        loss3 = loss_Xn[idx_n].sum()/Xn.size(0)
     #--------------------------------------------
     if beta_position == 0:
         loss=(1-beta)*loss1+(beta*0.5)*(loss2+loss3)
@@ -469,21 +479,21 @@ def IMA_update_margin(E, delta, max_margin, flag1, flag2, margin_new):
     E[expand]+=delta
     E[no_expand]=margin_new[no_expand]
     #when wrongly classified, do not re-initialize
-    E[flag2==0]=delta
+    #args.E[flag2==0]=delta
     E.clamp_(min=0, max=max_margin)
     print (expand.sum().item(),"samples are expanded.....")
 
 if __name__ == "__main__":
-    #CUDA_VISIBLE_DEVICES=0
 
     #device = torch.device('cuda:1')
     # Parse command line options
     parser = argparse.ArgumentParser(description="Train Unet landmark detection network")
-    parser.add_argument("--tag", default='IMA_10_original_3Z', help="name of the run")
+    parser.add_argument("--tag", default='IMA_10_min_R', help="name of the run")
+    parser.add_argument("--cuda", default = '1')
     parser.add_argument("--config_file", default="config.yaml", help="default configs")
-    parser.add_argument("--cuda", default="1")
     args = parser.parse_args()
  
+    #CUDA_VISIBLE_DEVICES=0
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
     os.environ["CUDA_VISIBLE_DEVICES"]=args.cuda
     # Load yaml config file
@@ -538,11 +548,11 @@ if __name__ == "__main__":
     sample_count_train = 150
     noise = float(args.tag.split("_")[1])
     epoch_refine = config['num_epochs']
-    delta = 5*noise/epoch_refine
+    delta = 15*noise/epoch_refine
     E = delta*torch.ones(sample_count_train, dtype=torch.float32)
-    alpha = 4    
+    alpha = 5    
     max_iter=20   
-    norm_type = np.inf
+    norm_type = 2
     #======================
     
     loss_train_list = list()
@@ -591,16 +601,18 @@ if __name__ == "__main__":
             loss.backward()
             optimizer.step()
             loss_list.append(loss)
+            flag1[idx[advc==0]]=1# if correctly classified under noise
+            flag2[idx]=1 # if correctly classified
          #--------------------update the margins
-            Yp_e_Y=classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
-            flag1[idx[advc==0]]=1
-            flag2[idx[Yp_e_Y]]=1
-            #flag2[idx]=1
+        #Yp_e_Y=classify_model_std_output_seg(Yp, target)
+        
+        #flag2[idx[Yp_e_Y]]=1
+        
             if idx_n.shape[0]>0:
                 temp=torch.norm((Xn-img[idx_n]).view(Xn.shape[0], -1), p=norm_type, dim=1).cpu()
                 #E_new[idx[idx_n]]=torch.min(E_new[idx[idx_n]], temp)     
                 #bottom = args.delta*torch.ones(E_new.size(0), dtype=E_new.dtype, device=E_new.device)
-                E_new[idx[idx_n]] = temp# use mean to refine the margin to reduce the effect of augmentation on margins
+                E_new[idx[idx_n]] = (E_new[idx[idx_n]]+temp)/2# use mean to refine the margin to reduce the effect of augmentation on margins
         #-----------------------------------------------------------------------
         IMA_update_margin(E, delta, noise, flag1, flag2, E_new) 
         loss_train = sum(loss_list) / dataset.__len__()

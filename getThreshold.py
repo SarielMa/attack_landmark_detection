@@ -55,7 +55,7 @@ class Tester(object):
         self.model = net 
 
 
-    def getThresholds(self, net=None):
+    def getThresholds(self, net=None, folder = None):
         #self.evaluater.reset()
         if net is not None:
             self.model = net
@@ -77,7 +77,7 @@ class Tester(object):
         bce_list = list()
         
         dataset_train = Cephalometric(self.datapath, "Train")
-        dataloader_train = DataLoader(dataset_train, batch_size=8, shuffle=False, num_workers=self.nWorkers)
+        dataloader_train = DataLoader(dataset_train, batch_size=1, shuffle=False, num_workers=self.nWorkers)
         
         for img, mask, guassian_mask, offset_y, offset_x, landmark_list in tqdm(dataloader_train):
             img, mask, offset_y, offset_x, guassian_mask = img.cuda(), mask.cuda(), \
@@ -122,17 +122,21 @@ class Tester(object):
         ax[1].legend()
         ax[2].legend() 
         ax[3].legend()
-        fig.savefig("./threshold_distribution_of_training_data.png")
+        fig.savefig("./"+folder+"_distribution_of_training_data.png")
         
-        return estimateMean(rList), estimateMean(ryList), estimateMean(rxList), estimateMean(bcelist)       
+        zscore = 3
+        
+        return estimateMean(rList,zscore), estimateMean(ryList,-zscore), estimateMean(rxList,-zscore), estimateMean(bcelist,-zscore)       
 
-def estimateMean(l):
+def estimateMean(l,z):
     mean,std = np.mean(l),np.std(l)
     # one z score
-    return huber(l)[0].item()-1*huber(l)[1].item()
+    return huber(l)[0].item()-z*huber(l)[1].item()
 if __name__ == "__main__":
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
-    os.environ["CUDA_VISIBLE_DEVICES"]="1"
+    os.environ["CUDA_VISIBLE_DEVICES"]="0"
+    folder = "base_400_320"
+    #folder = "IMA_10_3Z_R"
     # Parse command line options
     parser = argparse.ArgumentParser(description="get the threshold from already trained base model")
     parser.add_argument("--tag", default='getThreshold', help="position of the output dir")
@@ -147,7 +151,7 @@ if __name__ == "__main__":
     parser.add_argument("--epsilon", default="8", help="default configs")
     args = parser.parse_args()
 
-    with open(os.path.join("./results/base_400_320", args.config_file), "r") as f:
+    with open(os.path.join("./results/"+folder, args.config_file), "r") as f:
         config = yaml.load(f, Loader=yamlloader.ordereddict.CLoader)
     
     # Create Logger
@@ -162,7 +166,7 @@ if __name__ == "__main__":
     net = UNet_Pretrained(3, config['num_landmarks']).cuda()
 
     logger.info("Loading checkpoints from epoch {}".format(iteration))
-    checkpoints = torch.load("./results/base_400_320/model_epoch_{}.pth".format(iteration))
+    checkpoints = torch.load("./results/"+folder+"/model_epoch_{}.pth".format(iteration))
     newCP = dict()
     #adjust the keys(remove the "module.")
     for k in checkpoints.keys():
@@ -178,7 +182,7 @@ if __name__ == "__main__":
     net = torch.nn.DataParallel(net)
     #tester = Tester(logger, config, net, args.tag, args.train, args)
     tester = Tester(logger, config, tag=args.tag)
-    t1, t2, t3, t4 = tester.getThresholds(net)
+    t1, t2, t3, t4 = tester.getThresholds(net, folder)
     logger.info("the threshold 1 is {}, threshold 2 ry is {}, threshold 3 rx is {}, threshold 4 bce is {}".format(t1, t2, t3, t4))
     # go through all the training set to get the thresholds, three
     
