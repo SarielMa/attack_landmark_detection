@@ -488,7 +488,7 @@ if __name__ == "__main__":
     #device = torch.device('cuda:1')
     # Parse command line options
     parser = argparse.ArgumentParser(description="Train Unet landmark detection network")
-    parser.add_argument("--tag", default='IMA_10_3Z_R_bottom', help="name of the run")
+    parser.add_argument("--tag", default='IMA_10_3Z_bottom', help="name of the run")
     parser.add_argument("--cuda", default = '1')
     parser.add_argument("--config_file", default="config.yaml", help="default configs")
     args = parser.parse_args()
@@ -547,9 +547,11 @@ if __name__ == "__main__":
     
     sample_count_train = 150
     noise = float(args.tag.split("_")[1])
-    epoch_refine = config['num_epochs']
-    delta = 15*noise/epoch_refine
+    #epoch_refine = config['num_epochs']
+    #delta = 15*noise/epoch_refine
+    delta = 1
     E = delta*torch.ones(sample_count_train, dtype=torch.float32)
+    bottom = delta*torch.ones(sample_count_train, dtype=torch.float32)
     alpha = 5    
     max_iter=20   
     norm_type = 2
@@ -601,7 +603,7 @@ if __name__ == "__main__":
             loss.backward()
             optimizer.step()
             loss_list.append(loss)
-         #--------------------update the margins
+         #--------------------update the margins-
             #Yp_e_Y=classify_model_std_output_seg(Yp, target)
             flag1[idx[advc==0]]=1
             #flag2[idx[Yp_e_Y]]=1
@@ -610,7 +612,7 @@ if __name__ == "__main__":
                 temp=torch.norm((Xn-img[idx_n]).view(Xn.shape[0], -1), p=norm_type, dim=1).cpu()
                 #E_new[idx[idx_n]]=torch.min(E_new[idx[idx_n]], temp)     
                 #bottom = args.delta*torch.ones(E_new.size(0), dtype=E_new.dtype, device=E_new.device)
-                E_new[idx[idx_n]] = (E_new[idx[idx_n]]+temp)/2# use mean to refine the margin to reduce the effect of augmentation on margins
+                E_new[idx[idx_n]] = torch.max((E_new[idx[idx_n]]+temp)/2, bottom[idx[idx_n]])# use mean to refine the margin to reduce the effect of augmentation on margins
         #-----------------------------------------------------------------------
         IMA_update_margin(E, delta, noise, flag1, flag2, E_new) 
         loss_train = sum(loss_list) / dataset.__len__()

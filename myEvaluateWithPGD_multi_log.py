@@ -459,7 +459,7 @@ if __name__ == "__main__":
     resultFolder = args.tag
     iteration = 149
     #file folders================
-    folders = ["base_400_320","PGD_3","PGD_10","PGD_5","IMA_10_3Z_R"]
+    folders = ["base_400_320","PGD_3","PGD_10","PGD_5","IMA_10_3Z_Bottom","IMA_10_min"]
     #folders = ["base_400_320","PGD_20","PGD_15","PGD_10","PGD_5","IMA_20_3Z_R"]
     #folders = ["base_400_320","PGD_40","PGD_20","PGD_10","PGD_5","IMA_40_3Z_R"]
     #folders = ["base_400_320","PGD_15","PGD_10","PGD_5","IMA_15_3Z"]
