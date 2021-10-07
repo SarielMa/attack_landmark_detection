@@ -41,9 +41,11 @@ def run_model_adv_reg(net, img, mask, offset_y, offset_x, guassian_mask, return_
     else:
         return heatmap, regression_y, regression_x
 #
-def classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
-    threshold1=0.9076504
-    #threshold1=0
+def classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, threshold="min"):
+    if threshold  == "min":
+        threshold1=0.9076504
+    else:
+        threshold = 0.9277680097904124
     #threshold2=0.0344853832236048
     #threshold3 = 0.03364063541152001
     r, ry, rx= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
@@ -51,11 +53,11 @@ def classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y
     #Yp_e_Y=(r>=threshold1) & (ry <=threshold2) & (rx <= threshold3)
     return Yp_e_Y
 #
-def classify_model_adv_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
-    #3Z
-    #threshold1=0.9277680097904124
-    # min
-    threshold1=0.9076504
+def classify_model_adv_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, threshold="min"):
+    if threshold  == "min":
+        threshold1=0.9076504
+    else:
+        threshold = 0.9277680097904124
     #threshold2=0.0344853832236048
     #threshold3 = 0.03364063541152001
     r, ry, rx= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
@@ -86,6 +88,8 @@ if __name__ == "__main__":
     parser.add_argument("--tag", default='IMA_40_min_post_original_d4', help="name of the run")
     parser.add_argument("--config_file", default="config.yaml", help="default configs")
     parser.add_argument("--cuda", default="1")
+    parser.add_argument("--pretrain",default = "True")
+    #parser.add_argument("--threshold", default = "min")
     args = parser.parse_args()
  
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
@@ -113,20 +117,22 @@ if __name__ == "__main__":
     #========================================================================
     net = UNet_Pretrained(3, config['num_landmarks'])
     iteration  = config['num_epochs']-1
-    # load the pretrained clean model
-    checkpoints = torch.load("./runs/base/model_epoch_{}.pth".format(iteration))
-    newCP = dict()
-    #adjust the keys(remove the "module.")
-    for k in checkpoints.keys():
-        newK = ""
-        if "module." in k:
-            newK = ".".join(k.split(".")[1:])
-        else:
-            newK = k
-        newCP[newK] = checkpoints[k]
-    net.load_state_dict(newCP)
+    if args.pretrain == "True":
+        # load the pretrained clean model
+        checkpoints = torch.load("./runs/base/model_epoch_{}.pth".format(iteration))
+        newCP = dict()
+        #adjust the keys(remove the "module.")
+        for k in checkpoints.keys():
+            newK = ""
+            if "module." in k:
+                newK = ".".join(k.split(".")[1:])
+            else:
+                newK = k
+            newCP[newK] = checkpoints[k]
+        net.load_state_dict(newCP)
+        
     #=================================================================
-    net = torch.nn.DataParallel(net)
+    #net = torch.nn.DataParallel(net)
     net = net.cuda()
     logger.info(net)
 
@@ -166,7 +172,7 @@ if __name__ == "__main__":
     loss_train_list = list()
     loss_val_list = list()
     MRE_list = list()
-    
+    #config['num_epochs']
     for epoch in range(config['num_epochs']):
         loss_list = list()
         regression_loss_list = list()
@@ -262,6 +268,8 @@ if __name__ == "__main__":
         # dump yaml
         with open(runs_dir + "/config.yaml", "w") as f:
             yaml.dump(config, f)
+    with open(runs_dir + "/margins.npy","wb") as f:
+        np.save(f, E)
 
     # # Test
     # tester.test(net)
