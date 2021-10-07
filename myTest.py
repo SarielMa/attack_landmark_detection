@@ -224,7 +224,7 @@ class Tester(object):
                 regression_loss_y = loss_regression_fn(regression_y, offset_y, mask)
                 regression_loss_x = loss_regression_fn(regression_x, offset_x, mask)
     
-                loss = logic_loss + regression_loss_x + regression_loss_y
+                loss = 2*logic_loss + regression_loss_x + regression_loss_y
                 loss_regression = regression_loss_y + regression_loss_x
                 # acc them
                 train_loss_list.append(loss)

@@ -109,7 +109,7 @@ def clip_normB_(noise, norm_type, norm_max):
 def pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, 
                noise_norm, norm_type, max_iter, step,
                rand_init_norm=None, rand_init_Xn=None,
-               targeted=False, clip_X_min=0, clip_X_max=1,
+               targeted=False, clip_X_min=-1, clip_X_max=1,
                refine_Xn_max_iter=10,
                Xn1_equal_X=False, Xn2_equal_Xn=False,
                stop_near_boundary=False,
@@ -181,7 +181,7 @@ def pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask,
                 noise = Xnew-img
             #---------------------
             clip_norm_(noise, norm_type, noise_norm)
-            #Xn = torch.clamp(X+noise, clip_X_min, clip_X_max)
+            Xn = torch.clamp(X+noise, clip_X_min, clip_X_max)
             Xn = img+noise
             noise.data -= noise.data-(Xn-img).data
             #---------------------
@@ -235,7 +235,7 @@ def refine_Xn2_onto_boundary(model, Xn1, Xn2, Y, max_iter, run_model, classify_m
 def repeated_pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, 
                         noise_norm, norm_type, max_iter, step,
                         rand_init_norm=None, rand_init_Xn=None,
-                        targeted=False, clip_X_min=0, clip_X_max=1,
+                        targeted=False, clip_X_min=-1, clip_X_max=1,
                         refine_Xn_max_iter=10,
                         Xn1_equal_X=False,
                         Xn2_equal_Xn=False,
@@ -383,7 +383,7 @@ def classify_model_adv_output_reg(heatmap, guassian_mask, regression_y, offset_y
 def IMA_loss(net, img, mask, offset_y, offset_x, guassian_mask, 
              margin, norm_type, max_iter, step,
              rand_init_norm=None, rand_init_Xn=None,
-             clip_X_min=0, clip_X_max=1,
+             clip_X_min=-1, clip_X_max=1,
              refine_Xn_max_iter=10,
              Xn1_equal_X=False,
              Xn2_equal_Xn=False,

@@ -161,7 +161,7 @@ def total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, off
 def pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, 
                noise_norm, norm_type, max_iter, step,
                rand_init=True, rand_init_norm=None, targeted=False,
-               clip_X_min=-1, clip_X_max=1, use_optimizer=False, loss_fn=None):
+               clip_X_min=0, clip_X_max=1, use_optimizer=False, loss_fn=None):
     #-----------------------------------------------------
     if loss_fn is None :
         raise ValueError('loss_fn is unkown')
@@ -201,7 +201,7 @@ def pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask,
             noise_new = Xnew-img
         #---------------------
         clip_norm_(noise_new, norm_type, noise_norm)
-        Xn = torch.clamp(img+noise_new, clip_X_min, clip_X_max)
+        #Xn = torch.clamp(X+noise_new, clip_X_min, clip_X_max)
         Xn = img + noise_new
         noise_new.data -= noise_new.data-(Xn-img).data
         Xn=Xn.detach()
@@ -215,7 +215,7 @@ if __name__ == "__main__":
     # Parse command line options
     parser = argparse.ArgumentParser(description="Train Unet landmark detection network")
     parser.add_argument("--tag", default='pgd_20', help="name of the run")
-    parser.add_argument("--cuda", default='0', help="cuda id")
+    parser.add_argument("--cuda", default='1', help="cuda id")
     parser.add_argument("--config_file", default="config.yaml", help="default configs")
     args = parser.parse_args()
     

@@ -21,7 +21,7 @@ from myTest import Tester
 import matplotlib.pyplot as plt
 import numpy as np
 from PGD import IMA_loss
-from metric import total_loss, l1_matric  
+from metric import total_loss, l1_matric   
 
 def run_model_std_reg(net, img, mask, offset_y, offset_x, guassian_mask, return_loss=False, reduction='none'):
     heatmap, regression_y, regression_x = net(img)
@@ -42,23 +42,21 @@ def run_model_adv_reg(net, img, mask, offset_y, offset_x, guassian_mask, return_
         return heatmap, regression_y, regression_x
 #
 def classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
-    threshold1=0.9076504
-    #threshold1=0
-    #threshold2=0.0344853832236048
-    #threshold3 = 0.03364063541152001
+    threshold1=0
+    threshold2=100
+    threshold3 = 100
     r, ry, rx= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
-    Yp_e_Y=(r>=threshold1)
-    #Yp_e_Y=(r>=threshold1) & (ry <=threshold2) & (rx <= threshold3)
+    Yp_e_Y=(r>=threshold1) & (ry <=threshold2) & (rx <= threshold3)
     return Yp_e_Y
 #
 def classify_model_adv_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
     threshold1=0.9076504
-    #threshold2=0.0344853832236048
-    #threshold3 = 0.03364063541152001
+
     r, ry, rx= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
-    #Yp_e_Y=(r>=threshold1) & (ry <=threshold2) & (rx <= threshold3)
     Yp_e_Y=(r>=threshold1) 
     return Yp_e_Y
+
+    
 
 def IMA_update_margin(E, delta, max_margin, flag1, flag2, margin_new):
     # margin: to be updated
@@ -70,21 +68,21 @@ def IMA_update_margin(E, delta, max_margin, flag1, flag2, margin_new):
     E[expand]+=delta
     E[no_expand]=margin_new[no_expand]
     #when wrongly classified, do not re-initialize
-    E[flag2==0]=delta
+    #args.E[flag2==0]=delta
     E.clamp_(min=0, max=max_margin)
     print (expand.sum().item(),"samples are expanded.....")
 
 if __name__ == "__main__":
-    #CUDA_VISIBLE_DEVICES=0
 
     #device = torch.device('cuda:1')
     # Parse command line options
     parser = argparse.ArgumentParser(description="Train Unet landmark detection network")
-    parser.add_argument("--tag", default='IMA_40_min_post_original_d4', help="name of the run")
+    parser.add_argument("--tag", default='IMA_40_min_bottom_d4', help="name of the run")
+    parser.add_argument("--cuda", default = '1')
     parser.add_argument("--config_file", default="config.yaml", help="default configs")
-    parser.add_argument("--cuda", default="1")
     args = parser.parse_args()
  
+    #CUDA_VISIBLE_DEVICES=0
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
     os.environ["CUDA_VISIBLE_DEVICES"]=args.cuda
     # Load yaml config file
@@ -107,7 +105,8 @@ if __name__ == "__main__":
     dataset = Cephalometric_IMA(config['dataset_pth'], 'Train')
     dataloader = DataLoader(dataset, batch_size=config['batch_size'],
                                 shuffle=True, num_workers=config['num_workers'])
-    #========================================================================
+    
+    # net = UNet(3, config['num_landmarks'])##################################################
     net = UNet_Pretrained(3, config['num_landmarks'])
     iteration  = config['num_epochs']-1
     # load the pretrained clean model
@@ -121,8 +120,8 @@ if __name__ == "__main__":
         else:
             newK = k
         newCP[newK] = checkpoints[k]
-    net.load_state_dict(newCP)
-    #=================================================================
+    net.load_state_dict(newCP)   
+    #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     net = torch.nn.DataParallel(net)
     net = net.cuda()
     logger.info(net)
@@ -155,7 +154,8 @@ if __name__ == "__main__":
     delta = 23*noise/epoch_refine
     #delta = 1
     E = delta*torch.ones(sample_count_train, dtype=torch.float32)
-    alpha = 4    
+    bottom = delta*torch.ones(sample_count_train, dtype=torch.float32)
+    alpha = 5    
     max_iter=20   
     norm_type = 2
     #======================
@@ -206,16 +206,16 @@ if __name__ == "__main__":
             loss.backward()
             optimizer.step()
             loss_list.append(loss)
-         #--------------------update the margins
-            Yp_e_Y=classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
+         #--------------------update the margins-
+            #Yp_e_Y=classify_model_std_output_seg(Yp, target)
             flag1[idx[advc==0]]=1
-            flag2[idx[Yp_e_Y]]=1
-            #flag2[idx]=1
+            #flag2[idx[Yp_e_Y]]=1
+            flag2[idx]=1
             if idx_n.shape[0]>0:
                 temp=torch.norm((Xn-img[idx_n]).view(Xn.shape[0], -1), p=norm_type, dim=1).cpu()
                 #E_new[idx[idx_n]]=torch.min(E_new[idx[idx_n]], temp)     
                 #bottom = args.delta*torch.ones(E_new.size(0), dtype=E_new.dtype, device=E_new.device)
-                E_new[idx[idx_n]] = temp# use mean to refine the margin to reduce the effect of augmentation on margins
+                E_new[idx[idx_n]] = torch.max((E_new[idx[idx_n]]+temp)/2, bottom[idx[idx_n]])# use mean to refine the margin to reduce the effect of augmentation on margins
         #-----------------------------------------------------------------------
         IMA_update_margin(E, delta, noise, flag1, flag2, E_new) 
         loss_train = sum(loss_list) / dataset.__len__()

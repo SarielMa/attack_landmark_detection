@@ -440,7 +440,7 @@ if __name__ == "__main__":
 
     # Parse command line options
     parser = argparse.ArgumentParser(description="get the threshold from already trained base model")
-    parser.add_argument("--tag", default='testResults', help="position of the output dir")
+    parser.add_argument("--tag", default='test1004_3', help="position of the output dir")
     parser.add_argument("--debug", default='', help="position of the output dir")
     parser.add_argument("--iteration", default='', help="position of the output dir")
     parser.add_argument("--attack", default='', help="position of the output dir")
@@ -457,9 +457,9 @@ if __name__ == "__main__":
     os.environ["CUDA_VISIBLE_DEVICES"]=args.cuda
 
     resultFolder = args.tag
-    iteration = 149
+    iteration = 229
     #file folders================
-    folders = ["base_400_320","PGD_3","PGD_10","PGD_5","IMA_10_3Z_Bottom","IMA_10_min"]
+    folders = ["base","PGD_20_post","IMA_40_3Z_post","IMA_40_min_post"]
     #folders = ["base_400_320","PGD_20","PGD_15","PGD_10","PGD_5","IMA_20_3Z_R"]
     #folders = ["base_400_320","PGD_40","PGD_20","PGD_10","PGD_5","IMA_40_3Z_R"]
     #folders = ["base_400_320","PGD_15","PGD_10","PGD_5","IMA_15_3Z"]
@@ -469,7 +469,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     #fig, ax = plt.subplots(3,2, figsize = (10,15))
     plt.figure(figsize = (10,15))
-    noises = [0,3,5,10]
+    noises = [0,10,20,40]
     #noises = [0,5,10,20]
     #noises = [0,10,20,40]
     

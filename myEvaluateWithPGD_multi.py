@@ -17,6 +17,7 @@ from eval import Evaluater
 from utils import to_Image, voting, visualize, make_dir
 from attack import FGSMAttack
 from torch import optim
+from os.path import exists
 
 def clip_norm_(noise, norm_type, norm_max):
     if not isinstance(norm_max, torch.Tensor):
@@ -436,11 +437,10 @@ class Tester(object):
 
 
 if __name__ == "__main__":
-    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
-    os.environ["CUDA_VISIBLE_DEVICES"]="1"
+
     # Parse command line options
     parser = argparse.ArgumentParser(description="get the threshold from already trained base model")
-    parser.add_argument("--tag", default='getThreshold', help="position of the output dir")
+    parser.add_argument("--tag", default='test1005', help="position of the output dir")
     parser.add_argument("--debug", default='', help="position of the output dir")
     parser.add_argument("--iteration", default='', help="position of the output dir")
     parser.add_argument("--attack", default='', help="position of the output dir")
@@ -450,17 +450,29 @@ if __name__ == "__main__":
     parser.add_argument("--train", default="", help="default configs")
     parser.add_argument("--rand", default="", help="default configs")
     parser.add_argument("--epsilon", default="8", help="default configs")
+    parser.add_argument("--cuda", default="1", help="default configs")
     args = parser.parse_args()
+    
+    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
+    os.environ["CUDA_VISIBLE_DEVICES"]=args.cuda
 
-    iteration = 149
+    resultFolder = args.tag
+    iteration = 229
     #file folders================
-    folders = ["base_400_320","PGD_5","PGD_10","IMA_40_mean"]
-    folders = ["PGD_5","IMA_40_mean"]
+    folders = ["base","PGD_20_post","IMA_40_3Z_post_d4","IMA_40_min_post_d4","PGD_10_post","PGD_40_post"]
+    #folders = ["base_400_320","PGD_20","PGD_15","PGD_10","PGD_5","IMA_20_3Z_R"]
+    #folders = ["base_400_320","PGD_40","PGD_20","PGD_10","PGD_5","IMA_40_3Z_R"]
+    #folders = ["base_400_320","PGD_15","PGD_10","PGD_5","IMA_15_3Z"]
+    #folders = ["PGD_5","IMA_40_mean"]
     #folders = ["base_400_320"]
     #========================
     import matplotlib.pyplot as plt
-    fig, ax = plt.subplots(1,5, figsize = (25,8))
-    noises = [0,1]
+    #fig, ax = plt.subplots(3,2, figsize = (10,15))
+    plt.figure(figsize = (10,15))
+    noises = [0,10,20,40]
+    #noises = [0,5,10,20]
+    #noises = [0,10,20,40]
+    
     #noises = [0]
     cols = ['b','g','r','y','k','m','c']
     rows1 = []
@@ -468,6 +480,13 @@ if __name__ == "__main__":
     rows3 = []
     rows4 = []
     rows5 = []
+    for f in folders:
+        assert( exists("./results/"+f+"/model_epoch_{}.pth".format(iteration)))
+    print ("all files exist, test begins...")
+    resultDir = os.path.join("./results",resultFolder)
+    assert(not exists(resultDir))
+    os.mkdir(resultDir)
+    print ("result will be saved to ", resultDir)        
     for i, folder in enumerate(folders):
         MRE_list =list()
         SDR2_list = list()
@@ -508,56 +527,74 @@ if __name__ == "__main__":
             SDR3_list.append(SDR3)
             SDR4_list.append(SDR4)
             
-        ax[0].plot(noises,MRE_list, color = cols[i], label = folder )
+        plt.subplot(3,1,1)
+        #plt.yscale("log")
+        plt.plot(noises,MRE_list, color = cols[i], label = folder )
+        plt.ylabel("MRE")
+        plt.xlabel("noise (L2)")
+        plt.legend()    
         rows1.append([folder]+[str(round(i,3)) for i in MRE_list])
-        ax[1].plot(noises,SDR2_list, color = cols[i], label = folder )
-        rows2.append([folder]+[str(round(i,3)) for i in SDR2_list])
-        ax[2].plot(noises,SDR25_list, color = cols[i], label = folder )
-        rows3.append([folder]+[str(round(i,3)) for i in SDR25_list])
-        ax[3].plot(noises,SDR3_list, color = cols[i], label = folder )
-        rows4.append([folder]+[str(round(i,3)) for i in SDR3_list])
-        ax[4].plot(noises,SDR4_list, color = cols[i], label = folder )
-        rows5.append([folder]+[str(round(i,3)) for i in SDR4_list])
-        ax[0].set_ylabel("MRE")
-        ax[1].set_ylabel("SDR2")
-        ax[2].set_ylabel("SDR2.5")
-        ax[3].set_ylabel("SDR3")
-        ax[4].set_ylabel("SDR4")
-
-        ax[0].legend()
-        ax[1].legend()
-        ax[2].legend()
-        ax[3].legend()
-        ax[4].legend()
         
-    fig.savefig("./results/result.pdf",bbox_inches='tight') 
+        
+        
+        plt.subplot(3,2,3)
+        plt.plot(noises,SDR2_list, color = cols[i], label = folder )
+        plt.ylabel("SDR 2mm")
+        plt.xlabel("noise (L2)")
+        plt.legend() 
+        rows2.append([folder]+[str(round(i,3)) for i in SDR2_list])
+        
+        plt.subplot(3,2,4)
+        plt.plot(noises,SDR25_list, color = cols[i], label = folder )
+        plt.ylabel("SDR 2.5mm")
+        plt.xlabel("noise (L2)")
+        plt.legend()
+        rows3.append([folder]+[str(round(i,3)) for i in SDR25_list])
+        
+        
+        plt.subplot(3,2,5)
+        plt.plot(noises,SDR3_list, color = cols[i], label = folder )
+        plt.ylabel("SDR 3mm")
+        plt.xlabel("noise (L2)")
+        plt.legend()
+        rows4.append([folder]+[str(round(i,3)) for i in SDR3_list])
+        
+        plt.subplot(3,2,6)
+        plt.plot(noises,SDR4_list, color = cols[i], label = folder )
+        plt.ylabel("SDR 4mm")
+        plt.xlabel("noise (L2)")
+        plt.legend()
+        rows5.append([folder]+[str(round(i,3)) for i in SDR4_list])
+        
+        
+    plt.savefig(os.path.join(resultDir,"result.pdf"),bbox_inches='tight')
     
     fields1 = ["noise"]+[str(i) for i in noises]
-    with open("./results/result_MRE.csv",'w') as csvfile:
+    with open(os.path.join(resultDir,"result_MRE.csv"),'w') as csvfile:
         csvwriter = csv.writer(csvfile)
         csvwriter.writerow(fields1)
         csvwriter.writerows(rows1)        
         
     fields2 = ["noise"]+[str(i) for i in noises]
-    with open("./results/result_SDR2.csv",'w') as csvfile:
+    with open(os.path.join(resultDir,"result_SDR2.csv"),'w') as csvfile:
         csvwriter = csv.writer(csvfile)
         csvwriter.writerow(fields2)
         csvwriter.writerows(rows2)  
         
     fields3 = ["noise"]+[str(i) for i in noises]
-    with open("./results/result_SDR2.5.csv",'w') as csvfile:
+    with open(os.path.join(resultDir,"result_SDR2.5.csv"),'w') as csvfile:
         csvwriter = csv.writer(csvfile)
         csvwriter.writerow(fields3)
         csvwriter.writerows(rows3)  
         
     fields4 = ["noise"]+[str(i) for i in noises]
-    with open("./results/result_SDR3.csv",'w') as csvfile:
+    with open(os.path.join(resultDir,"result_SDR3.csv"),'w') as csvfile:
         csvwriter = csv.writer(csvfile)
         csvwriter.writerow(fields4)
         csvwriter.writerows(rows4)  
         
     fields5 = ["noise"]+[str(i) for i in noises]
-    with open("./results/result_SDR4.csv",'w') as csvfile:
+    with open(os.path.join(resultDir,"result_SDR4.csv"),'w') as csvfile:
         csvwriter = csv.writer(csvfile)
         csvwriter.writerow(fields5)
         csvwriter.writerows(rows5)  
