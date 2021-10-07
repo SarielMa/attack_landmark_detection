@@ -52,6 +52,9 @@ def classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y
     return Yp_e_Y
 #
 def classify_model_adv_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
+    #3Z
+    #threshold1=0.9277680097904124
+    # min
     threshold1=0.9076504
     #threshold2=0.0344853832236048
     #threshold3 = 0.03364063541152001
