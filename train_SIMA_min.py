@@ -21,7 +21,7 @@ from myTest import Tester
 import matplotlib.pyplot as plt
 import numpy as np
 from PGD import IMA_loss
-from metric import total_loss, l1_matric   
+from metric import total_loss, l1_matric
 
 def run_model_std_reg(net, img, mask, offset_y, offset_x, guassian_mask, return_loss=False, reduction='none'):
     heatmap, regression_y, regression_x = net(img)
@@ -51,14 +51,13 @@ def classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y
 #
 def classify_model_adv_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
     #3Z
-    #threshold1=0.9277680097904124
-    # min
     threshold1=0.9076504
+    # min
+    #threshold1=0.9076504
     r, ry, rx= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
     Yp_e_Y=(r>=threshold1) 
     return Yp_e_Y
 
-    
 
 def IMA_update_margin(E, delta, max_margin, flag1, flag2, margin_new):
     # margin: to be updated
@@ -79,9 +78,10 @@ if __name__ == "__main__":
     #device = torch.device('cuda:1')
     # Parse command line options
     parser = argparse.ArgumentParser(description="Train Unet landmark detection network")
-    parser.add_argument("--tag", default='IMA_40_min_bottom_d4', help="name of the run")
+    parser.add_argument("--tag", default='IMA_40_3Z_bottom_d4', help="name of the run")
     parser.add_argument("--cuda", default = '1')
     parser.add_argument("--config_file", default="config.yaml", help="default configs")
+    parser.add_argument("--pretrain")
     args = parser.parse_args()
  
     #CUDA_VISIBLE_DEVICES=0
@@ -112,17 +112,18 @@ if __name__ == "__main__":
     net = UNet_Pretrained(3, config['num_landmarks'])
     iteration  = config['num_epochs']-1
     # load the pretrained clean model
-    checkpoints = torch.load("./runs/base/model_epoch_{}.pth".format(iteration))
-    newCP = dict()
-    #adjust the keys(remove the "module.")
-    for k in checkpoints.keys():
-        newK = ""
-        if "module." in k:
-            newK = ".".join(k.split(".")[1:])
-        else:
-            newK = k
-        newCP[newK] = checkpoints[k]
-    net.load_state_dict(newCP)   
+    if args.pretrain == "True":
+        checkpoints = torch.load("./runs/base/model_epoch_{}.pth".format(iteration))
+        newCP = dict()
+        #adjust the keys(remove the "module.")
+        for k in checkpoints.keys():
+            newK = ""
+            if "module." in k:
+                newK = ".".join(k.split(".")[1:])
+            else:
+                newK = k
+            newCP[newK] = checkpoints[k]
+        net.load_state_dict(newCP)   
     #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     net = torch.nn.DataParallel(net)
     net = net.cuda()
@@ -154,6 +155,7 @@ if __name__ == "__main__":
     noise = float(args.tag.split("_")[1])
     epoch_refine = config['num_epochs']
     delta = 23*noise/epoch_refine
+    updateIterval = int(config['num_epochs']*delta/noise)
     #delta = 1
     E = delta*torch.ones(sample_count_train, dtype=torch.float32)
     bottom = delta*torch.ones(sample_count_train, dtype=torch.float32)
@@ -219,7 +221,9 @@ if __name__ == "__main__":
                 #bottom = args.delta*torch.ones(E_new.size(0), dtype=E_new.dtype, device=E_new.device)
                 E_new[idx[idx_n]] = torch.max((E_new[idx[idx_n]]+temp)/2, bottom[idx[idx_n]])# use mean to refine the margin to reduce the effect of augmentation on margins
         #-----------------------------------------------------------------------
-        IMA_update_margin(E, delta, noise, flag1, flag2, E_new) 
+        if epoch % updateIterval ==0:
+            print ("updating the margins...........................................")
+            IMA_update_margin(E, delta, noise, flag1, flag2, E_new) 
         loss_train = sum(loss_list) / dataset.__len__()
         loss_train_list.append(loss_train)
         logger.info("Epoch {} Training loss {}".format(epoch, loss_train))

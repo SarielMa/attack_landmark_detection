@@ -51,7 +51,7 @@ def classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y
 #
 def classify_model_adv_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
     #3Z
-    threshold1=0.9277680097904124
+    threshold1=0.9076504
     # min
     #threshold1=0.9076504
     r, ry, rx= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
@@ -81,6 +81,7 @@ if __name__ == "__main__":
     parser.add_argument("--tag", default='SIMA2_40_3Z_bottom_d4', help="name of the run")
     parser.add_argument("--cuda", default = '1')
     parser.add_argument("--config_file", default="config.yaml", help="default configs")
+    parser.add_argument("--pretrain")
     args = parser.parse_args()
  
     #CUDA_VISIBLE_DEVICES=0
@@ -111,17 +112,18 @@ if __name__ == "__main__":
     net = UNet_Pretrained(3, config['num_landmarks'])
     iteration  = config['num_epochs']-1
     # load the pretrained clean model
-    checkpoints = torch.load("./runs/base/model_epoch_{}.pth".format(iteration))
-    newCP = dict()
-    #adjust the keys(remove the "module.")
-    for k in checkpoints.keys():
-        newK = ""
-        if "module." in k:
-            newK = ".".join(k.split(".")[1:])
-        else:
-            newK = k
-        newCP[newK] = checkpoints[k]
-    net.load_state_dict(newCP)   
+    if args.pretrain == "True":
+        checkpoints = torch.load("./runs/base/model_epoch_{}.pth".format(iteration))
+        newCP = dict()
+        #adjust the keys(remove the "module.")
+        for k in checkpoints.keys():
+            newK = ""
+            if "module." in k:
+                newK = ".".join(k.split(".")[1:])
+            else:
+                newK = k
+            newCP[newK] = checkpoints[k]
+        net.load_state_dict(newCP)   
     #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     net = torch.nn.DataParallel(net)
     net = net.cuda()
