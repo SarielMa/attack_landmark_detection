@@ -469,6 +469,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     #fig, ax = plt.subplots(3,2, figsize = (10,15))
     plt.figure(figsize = (10,15))
+    cm = plt.get_cmap("gist_rainbow")
     noises = [0,5,10,25,40]
     #noises = [0,5,10,20]
     #noises = [0,10,20,40]
@@ -529,7 +530,7 @@ if __name__ == "__main__":
             
         plt.subplot(3,1,1)
         #plt.yscale("log")
-        plt.plot(noises,MRE_list, color = cols[i], label = folder )
+        plt.plot(noises,MRE_list, color = cm(1.0*i/len(folders)), label = folder )
         plt.ylabel("MRE")
         plt.xlabel("noise (L2)")
         plt.legend()    
@@ -538,14 +539,14 @@ if __name__ == "__main__":
         
         
         plt.subplot(3,2,3)
-        plt.plot(noises,SDR2_list, color = cols[i], label = folder )
+        plt.plot(noises,SDR2_list, color = cm(1.0*i/len(folders)), label = folder )
         plt.ylabel("SDR 2mm")
         plt.xlabel("noise (L2)")
         plt.legend() 
         rows2.append([folder]+[str(round(i,3)) for i in SDR2_list])
         
         plt.subplot(3,2,4)
-        plt.plot(noises,SDR25_list, color = cols[i], label = folder )
+        plt.plot(noises,SDR25_list, color = cm(1.0*i/len(folders)), label = folder )
         plt.ylabel("SDR 2.5mm")
         plt.xlabel("noise (L2)")
         plt.legend()
@@ -553,14 +554,14 @@ if __name__ == "__main__":
         
         
         plt.subplot(3,2,5)
-        plt.plot(noises,SDR3_list, color = cols[i], label = folder )
+        plt.plot(noises,SDR3_list, color = cm(1.0*i/len(folders)), label = folder )
         plt.ylabel("SDR 3mm")
         plt.xlabel("noise (L2)")
         plt.legend()
         rows4.append([folder]+[str(round(i,3)) for i in SDR3_list])
         
         plt.subplot(3,2,6)
-        plt.plot(noises,SDR4_list, color = cols[i], label = folder )
+        plt.plot(noises,SDR4_list, color = cm(1.0*i/len(folders)), label = folder )
         plt.ylabel("SDR 4mm")
         plt.xlabel("noise (L2)")
         plt.legend()
