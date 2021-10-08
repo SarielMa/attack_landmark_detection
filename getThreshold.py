@@ -74,7 +74,7 @@ class Tester(object):
         r_list = list()
         ry_list = list()   
         rx_list = list()
-        bce_list = list()
+        loss_list = list()
         
         dataset_train = Cephalometric(self.datapath, "Train")
         dataloader_train = DataLoader(dataset_train, batch_size=1, shuffle=False, num_workers=self.nWorkers)
@@ -100,24 +100,25 @@ class Tester(object):
                 regression_loss_ys = loss_regression_fn(regression_y, offset_y, mask, reduction = "none")
                 regression_loss_xs = loss_regression_fn(regression_x, offset_x, mask, reduction = "none")
                
+                loss = bce*2+regression_loss_ys+regression_loss_xs
 
                 # acc them
                 r_list.append(r.cpu().numpy())
                 ry_list.append(regression_loss_ys.cpu().numpy())
                 rx_list.append(regression_loss_xs.cpu().numpy())
-                bce_list.append(bce.cpu().item())
+                loss_list.append(loss.cpu().item())
 
         rList = np.concatenate(r_list)
         ryList = np.concatenate(ry_list)
         rxList = np.concatenate(rx_list)
-        bcelist = bce_list
+         
         import matplotlib.pyplot as plt
         cols = ['b','g','r','y','k','m','c']
         fig, ax = plt.subplots(1,4, figsize=(20,5))
         ax[0].hist(rList,  bins=20, color=cols[0], label="distribution of ratio")
         ax[1].hist(ryList,bins=20, color=cols[1], label="distribution of offset y error")
         ax[2].hist(rxList,bins=20, color=cols[2], label="distribution of offset x error")
-        ax[3].hist(bcelist,bins=20, color=cols[3], label="distribution of BCE")
+        ax[3].hist(loss_list,bins=20, color=cols[3], label="distribution of BCE")
         ax[0].legend()
         ax[1].legend()
         ax[2].legend() 
@@ -126,7 +127,7 @@ class Tester(object):
         
         zscore = 3
         
-        return estimateMean(rList,zscore), estimateMean(ryList,-zscore), estimateMean(rxList,-zscore), estimateMean(bcelist,-zscore)       
+        return estimateMean(rList,zscore), estimateMean(ryList,-zscore), estimateMean(rxList,-zscore), estimateMean(loss_list,-zscore)       
 
 def estimateMean(l,z):
     mean,std = np.mean(l),np.std(l)
@@ -135,7 +136,7 @@ def estimateMean(l,z):
 if __name__ == "__main__":
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
     os.environ["CUDA_VISIBLE_DEVICES"]="0"
-    folder = "base_400_320"
+    folder = "base"
     #folder = "IMA_10_3Z_R"
     # Parse command line options
     parser = argparse.ArgumentParser(description="get the threshold from already trained base model")
