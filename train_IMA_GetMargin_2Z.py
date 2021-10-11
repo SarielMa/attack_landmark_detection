@@ -41,20 +41,26 @@ def run_model_adv_reg(net, img, mask, offset_y, offset_x, guassian_mask, return_
     else:
         return heatmap, regression_y, regression_x
 #
-def classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, threshold="min"):
-    threshold1 = 0.08815227217139227
+def classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
 
-    loss, _=total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask,  reduction='none') 
-    Yp_e_Y=(loss<=threshold1) 
+    threshold1 = 0
+    #threshold2=0.0344853832236048
+    #threshold3 = 0.03364063541152001
+    r, ry, rx= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
+    Yp_e_Y=(r>=threshold1)
     #Yp_e_Y=(r>=threshold1) & (ry <=threshold2) & (rx <= threshold3)
     return Yp_e_Y
 #
-def classify_model_adv_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, threshold="min"):
+def classify_model_adv_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
 
-    threshold1 = 0.08815227217139227
-    loss, _=total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask,  reduction='none') 
-    #Yp_e_Y=(r>=threshold1) & (ry <=threshold2) & (rx <= threshold3)
-    Yp_e_Y=(loss<=threshold1) 
+    threshold1 = 0.9154986890761969
+    #threshold2 = 0.029883423222170708
+    #threshold3 = 0.031045339547359305
+    threshold2 = 0.11717294825643662
+    threshold3 = 0.10030718302724811
+    r, ry, rx= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
+    Yp_e_Y=(r>=threshold1) & (ry <=threshold2) & (rx <= threshold3) 
+    #Yp_e_Y=(r>=threshold1) 
     return Yp_e_Y
 
 def IMA_update_margin(E, delta, max_margin, flag1, flag2, margin_new):
@@ -77,10 +83,10 @@ if __name__ == "__main__":
     #device = torch.device('cuda:1')
     # Parse command line options
     parser = argparse.ArgumentParser(description="Train Unet landmark detection network")
-    parser.add_argument("--tag", default='IMA_40_min_post_original_d4', help="name of the run")
+    parser.add_argument("--tag", default='IMA_40_all_Val2Z', help="name of the run")
     parser.add_argument("--config_file", default="config.yaml", help="default configs")
     parser.add_argument("--cuda", default="1")
-    parser.add_argument("--pretrain",default = "True")
+    parser.add_argument("--pretrain",default = "False")
     #parser.add_argument("--threshold", default = "min")
     args = parser.parse_args()
  

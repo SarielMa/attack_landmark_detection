@@ -164,7 +164,7 @@ def total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, off
 #%%
 def pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, noise_norm, norm_type, max_iter, step,
                rand_init=True, rand_init_norm=None, targeted=False,
-               clip_X_min=0, clip_X_max=1, use_optimizer=False, loss_fn=None):
+               clip_X_min=-1, clip_X_max=1, use_optimizer=False, loss_fn=None):
     #-----------------------------------------------------
     if loss_fn is None :
         raise ValueError('loss_fn is unkown')
@@ -204,7 +204,7 @@ def pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, noise_norm, no
             noise_new = Xnew-img
         #---------------------
         clip_norm_(noise_new, norm_type, noise_norm)
-        #Xn = torch.clamp(X+noise_new, clip_X_min, clip_X_max)
+        Xn = torch.clamp(img+noise_new, clip_X_min, clip_X_max)
         Xn = img + noise_new
         noise_new.data -= noise_new.data-(Xn-img).data
         Xn=Xn.detach()
@@ -437,10 +437,11 @@ class Tester(object):
 
 
 if __name__ == "__main__":
-
+    #import random
+    random.seed(10)
     # Parse command line options
     parser = argparse.ArgumentParser(description="get the threshold from already trained base model")
-    parser.add_argument("--tag", default='test1007_2', help="position of the output dir")
+    parser.add_argument("--tag", default='test1010_119', help="position of the output dir")
     parser.add_argument("--debug", default='', help="position of the output dir")
     parser.add_argument("--iteration", default='', help="position of the output dir")
     parser.add_argument("--attack", default='', help="position of the output dir")
@@ -451,15 +452,23 @@ if __name__ == "__main__":
     parser.add_argument("--rand", default="", help="default configs")
     parser.add_argument("--epsilon", default="8", help="default configs")
     parser.add_argument("--cuda", default="1", help="default configs")
+    parser.add_argument("--pretrain", default="False", help="default configs")
     args = parser.parse_args()
     
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
     os.environ["CUDA_VISIBLE_DEVICES"]=args.cuda
-
+    subfolder = ""
+    
+    if args.pretrain == "True":
+        subfolder = "pretrain-based-min/"
+    else:
+        subfolder = "non-pretrain-min/"
+        
     resultFolder = args.tag
     iteration = 229
     #file folders================
-    folders = ["base","PGD_25_post","SIMA_40_min_post","SIMA2_40_min_post","PGD_10_post","PGD_40_post","IMA_40_min_original_post"]
+    #folders = ["base","PGD_25_post","PGD_10_post","PGD_40_post","SIMA_40_min","SIMA2_40_min","IMA_40_min_original","IMA_40_min","PGD_IMA"]
+    folders = ["base","PGD_25","PGD_10","PGD_40","IMA_40_min_d10","IMA_40_original_d10","PGD_IMA_3Z"]
     #folders = ["base_400_320","PGD_20","PGD_15","PGD_10","PGD_5","IMA_20_3Z_R"]
     #folders = ["base_400_320","PGD_40","PGD_20","PGD_10","PGD_5","IMA_40_3Z_R"]
     #folders = ["base_400_320","PGD_15","PGD_10","PGD_5","IMA_15_3Z"]
@@ -475,16 +484,16 @@ if __name__ == "__main__":
     #noises = [0,10,20,40]
     
     #noises = [0]
-    cols = ['b','g','r','y','k','m','c']
+    #cols = ['b','g','r','y','k','m','c']
     rows1 = []
     rows2 = []
     rows3 = []
     rows4 = []
     rows5 = []
     for f in folders:
-        assert( exists("./results/"+f+"/model_epoch_{}.pth".format(iteration)))
+        assert( exists("./results/"+subfolder+f+"/model_epoch_{}.pth".format(iteration)))
     print ("all files exist, test begins...")
-    resultDir = os.path.join("./results",resultFolder)
+    resultDir = os.path.join("./results/"+subfolder,resultFolder)
     assert(not exists(resultDir))
     os.mkdir(resultDir)
     print ("result will be saved to ", resultDir)        
@@ -495,14 +504,14 @@ if __name__ == "__main__":
         SDR3_list = list()
         SDR4_list = list()
         for noise in noises:
-            with open(os.path.join("./results/"+folder, args.config_file), "r") as f:
+            with open(os.path.join("./results/"+subfolder+folder, args.config_file), "r") as f:
                 config = yaml.load(f, Loader=yamlloader.ordereddict.CLoader)     
             # Create Logger
             logger = get_mylogger()
             # Load model
             net = UNet_Pretrained(3, config['num_landmarks']).cuda()   
             logger.info("Loading checkpoints from epoch {}".format(iteration))
-            checkpoints = torch.load("./results/"+folder+"/model_epoch_{}.pth".format(iteration))
+            checkpoints = torch.load("./results/"+subfolder+folder+"/model_epoch_{}.pth".format(iteration))
             newCP = dict()
             #adjust the keys(remove the "module.")
             for k in checkpoints.keys():
@@ -529,9 +538,9 @@ if __name__ == "__main__":
             SDR4_list.append(SDR4)
             
         plt.subplot(3,1,1)
-        #plt.yscale("log")
+        plt.yscale("log")
         plt.plot(noises,MRE_list, color = cm(1.0*i/len(folders)), label = folder )
-        plt.ylabel("MRE")
+        plt.ylabel("log(MRE)")
         plt.xlabel("noise (L2)")
         plt.legend()    
         rows1.append([folder]+[str(round(i,3)) for i in MRE_list])

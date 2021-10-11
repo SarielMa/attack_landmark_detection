@@ -88,7 +88,7 @@ if __name__ == "__main__":
     parser.add_argument("--tag", default='IMA_40_min_post_original_d4', help="name of the run")
     parser.add_argument("--config_file", default="config.yaml", help="default configs")
     parser.add_argument("--cuda", default="1")
-    parser.add_argument("--pretrain",default = "True")
+    parser.add_argument("--pretrain",default = "False")
     #parser.add_argument("--threshold", default = "min")
     args = parser.parse_args()
  
@@ -161,8 +161,8 @@ if __name__ == "__main__":
     sample_count_train = 150
     noise = float(args.tag.split("_")[1])
     epoch_refine = config['num_epochs']
-    delta = 23*noise/epoch_refine
-    #delta = 1
+    #delta = 23*noise/epoch_refine
+    delta = 10
     E = delta*torch.ones(sample_count_train, dtype=torch.float32)
     alpha = 4    
     max_iter=20   

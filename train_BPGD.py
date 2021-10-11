@@ -51,7 +51,7 @@ def classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y
 #
 def classify_model_adv_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
     #3Z
-    threshold1=0.92139304
+    threshold1=0
     # min
     #threshold1=0.9076504
     r, ry, rx= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
@@ -78,7 +78,7 @@ if __name__ == "__main__":
     #device = torch.device('cuda:1')
     # Parse command line options
     parser = argparse.ArgumentParser(description="Train Unet landmark detection network")
-    parser.add_argument("--tag", default='SIMA2_40_min_d10', help="name of the run")
+    parser.add_argument("--tag", default='BPGD_10', help="name of the run")
     parser.add_argument("--cuda", default = '1')
     parser.add_argument("--config_file", default="config.yaml", help="default configs")
     parser.add_argument("--pretrain")
@@ -224,9 +224,9 @@ if __name__ == "__main__":
         #-----------------------------------------------------------------------
         expand=(flag1==1)&(flag2==1)
         # smooth strategy 2
-        if expand.sum().item() > sample_count_train*updateRate:
-            print ("updating the margins...........................................")
-            IMA_update_margin(E, delta, noise, flag1, flag2, E_new) 
+        #if expand.sum().item() > sample_count_train*updateRate:
+        #    print ("updating the margins...........................................")
+        #    IMA_update_margin(E, delta, noise, flag1, flag2, E_new) 
         loss_train = sum(loss_list) / dataset.__len__()
         loss_train_list.append(loss_train)
         logger.info("Epoch {} Training loss {}".format(epoch, loss_train))

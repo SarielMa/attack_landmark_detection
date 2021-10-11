@@ -76,7 +76,7 @@ class Tester(object):
         rx_list = list()
         loss_list = list()
         
-        dataset_train = Cephalometric(self.datapath, "Train")
+        dataset_train = Cephalometric(self.datapath, "Val")
         dataloader_train = DataLoader(dataset_train, batch_size=1, shuffle=False, num_workers=self.nWorkers)
         
         for img, mask, guassian_mask, offset_y, offset_x, landmark_list in tqdm(dataloader_train):
@@ -118,14 +118,14 @@ class Tester(object):
         ax[0].hist(rList,  bins=20, color=cols[0], label="distribution of ratio")
         ax[1].hist(ryList,bins=20, color=cols[1], label="distribution of offset y error")
         ax[2].hist(rxList,bins=20, color=cols[2], label="distribution of offset x error")
-        ax[3].hist(loss_list,bins=20, color=cols[3], label="distribution of BCE")
+        ax[3].hist(loss_list,bins=20, color=cols[3], label="distribution of loss")
         ax[0].legend()
         ax[1].legend()
         ax[2].legend() 
         ax[3].legend()
-        fig.savefig("./"+folder+"_distribution_of_training_data.png")
+        fig.savefig("./"+folder+"_distribution_of_val_data.png")
         
-        zscore = 3
+        zscore = 2
         
         return estimateMean(rList,zscore), estimateMean(ryList,-zscore), estimateMean(rxList,-zscore), estimateMean(loss_list,-zscore)       
 
@@ -137,7 +137,7 @@ if __name__ == "__main__":
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
     os.environ["CUDA_VISIBLE_DEVICES"]="0"
     folder = "base"
-    #folder = "IMA_10_3Z_R"
+    #folder = "non-pretrain-min/PGD_10"
     # Parse command line options
     parser = argparse.ArgumentParser(description="get the threshold from already trained base model")
     parser.add_argument("--tag", default='getThreshold', help="position of the output dir")
@@ -159,7 +159,7 @@ if __name__ == "__main__":
     logger = get_mylogger()
         
 
-    iteration = 149
+    iteration = 229
     
     # Load model
     # net = UNet(3, config['num_landmarks']).cuda()
@@ -184,7 +184,7 @@ if __name__ == "__main__":
     #tester = Tester(logger, config, net, args.tag, args.train, args)
     tester = Tester(logger, config, tag=args.tag)
     t1, t2, t3, t4 = tester.getThresholds(net, folder)
-    logger.info("the threshold 1 is {}, threshold 2 ry is {}, threshold 3 rx is {}, threshold 4 bce is {}".format(t1, t2, t3, t4))
+    logger.info("the threshold 1 is {}, threshold 2 ry is {}, threshold 3 rx is {}, threshold 4 loss is {}".format(t1, t2, t3, t4))
     # go through all the training set to get the thresholds, three
     
     

@@ -214,9 +214,10 @@ if __name__ == "__main__":
     #device = torch.device('cuda:1')
     # Parse command line options
     parser = argparse.ArgumentParser(description="Train Unet landmark detection network")
-    parser.add_argument("--tag", default='PGD_IMA', help="name of the run")
+    parser.add_argument("--tag", default='PGD_IMA_3z', help="name of the run")
     parser.add_argument("--cuda", default='1', help="cuda id")
     parser.add_argument("--config_file", default="config.yaml", help="default configs")
+    parser.add_argument("--pretrain")
     args = parser.parse_args()
     
     #CUDA_VISIBLE_DEVICES=0
@@ -248,17 +249,18 @@ if __name__ == "__main__":
     net = UNet_Pretrained(3, config['num_landmarks'])
     iteration  = config['num_epochs']-1
     # load the pretrained clean model
-    checkpoints = torch.load("./runs/base/model_epoch_{}.pth".format(iteration))
-    newCP = dict()
-    #adjust the keys(remove the "module.")
-    for k in checkpoints.keys():
-        newK = ""
-        if "module." in k:
-            newK = ".".join(k.split(".")[1:])
-        else:
-            newK = k
-        newCP[newK] = checkpoints[k]
-    net.load_state_dict(newCP)
+    if args.pretrain == "True":
+        checkpoints = torch.load("./runs/base/model_epoch_{}.pth".format(iteration))
+        newCP = dict()
+        #adjust the keys(remove the "module.")
+        for k in checkpoints.keys():
+            newK = ""
+            if "module." in k:
+                newK = ".".join(k.split(".")[1:])
+            else:
+                newK = k
+            newCP[newK] = checkpoints[k]
+        net.load_state_dict(newCP)
     #=================================================================
     net = torch.nn.DataParallel(net)
     net = net.cuda()
@@ -277,7 +279,7 @@ if __name__ == "__main__":
  
     #======================
     #load the margins
-    b = np.load("./runs/margin/margins.npy")
+    b = np.load("./runs/margin_non_pretrain_3z/margins.npy")
     noise = torch.from_numpy(b)
     assert(isinstance(noise, torch.Tensor))
     norm_type = 2

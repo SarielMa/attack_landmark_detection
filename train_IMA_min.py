@@ -79,10 +79,10 @@ if __name__ == "__main__":
     #device = torch.device('cuda:1')
     # Parse command line options
     parser = argparse.ArgumentParser(description="Train Unet landmark detection network")
-    parser.add_argument("--tag", default='IMA_40_min_bottom_d4', help="name of the run")
+    parser.add_argument("--tag", default='try', help="name of the run")
     parser.add_argument("--cuda", default = '1')
     parser.add_argument("--config_file", default="config.yaml", help="default configs")
-    parser.add_argument("--pretrain")
+    parser.add_argument("--pretrain",default="False")
     args = parser.parse_args()
  
     #CUDA_VISIBLE_DEVICES=0
@@ -155,8 +155,8 @@ if __name__ == "__main__":
     sample_count_train = 150
     noise = float(args.tag.split("_")[1])
     epoch_refine = config['num_epochs']
-    delta = 23*noise/epoch_refine
-    #delta = 1
+    #delta = 23*noise/epoch_refine
+    delta = 10
     E = delta*torch.ones(sample_count_train, dtype=torch.float32)
     bottom = delta*torch.ones(sample_count_train, dtype=torch.float32)
     alpha = 5    
