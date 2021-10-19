@@ -49,18 +49,20 @@ class Cephalometric(data.Dataset):
             self.pth_Image = os.path.join(self.pth_Image, 'TrainingData')
             start = 1
             end = 150
-        elif mode == 'val':
+        elif mode == 'Val':
             self.pth_Image = os.path.join(self.pth_Image, 'Test1Data')
             start = 151
-            end = 155
+            end = 160
         elif mode == 'Test1':
             self.pth_Image = os.path.join(self.pth_Image, 'Test1Data')
-            start = 156
+            start = 200
             end = 300
-        else:
+        elif mode == 'Test2':
             self.pth_Image = os.path.join(self.pth_Image, 'Test2Data')
             start = 301
             end = 400
+        else: 
+            raise ValueError('Input dataset not found ')
         
         normalize = transforms.Normalize([0.5], [0.5])
         transformList = []
@@ -173,7 +175,7 @@ class Cephalometric_IMA(data.Dataset):
         elif mode == 'Val':
             self.pth_Image = os.path.join(self.pth_Image, 'Test1Data')
             start = 151
-            end = 200
+            end = 160
         elif mode == 'Test1':
             self.pth_Image = os.path.join(self.pth_Image, 'Test1Data')
             start = 200

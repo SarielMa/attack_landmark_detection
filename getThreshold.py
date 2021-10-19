@@ -75,6 +75,7 @@ class Tester(object):
         ry_list = list()   
         rx_list = list()
         loss_list = list()
+        bce_list = list()
         
         dataset_train = Cephalometric(self.datapath, "Val")
         dataloader_train = DataLoader(dataset_train, batch_size=1, shuffle=False, num_workers=self.nWorkers)
@@ -88,8 +89,9 @@ class Tester(object):
                 loss_regression_fn = myL1Loss
                 # the loss for heatmap
                 #BCE loss
-                loss_logic_fn = BCELoss()
+                loss_logic_fn = BCELoss(reduction = 'none')
                 bce= loss_logic_fn(heatmap, guassian_mask)
+                bce = bce.view(bce.size(0),-1).mean(1)
                 # r rario
                 #logic_loss = loss_logic_fn(heatmap, guassian_mask, mask, reduction = "none")
                 guassian_mask=guassian_mask/torch.norm(guassian_mask, p=2,dim = (2,3), keepdim=True)
@@ -104,36 +106,42 @@ class Tester(object):
 
                 # acc them
                 r_list.append(r.cpu().numpy())
+                bce_list.append(bce.cpu().numpy())
                 ry_list.append(regression_loss_ys.cpu().numpy())
                 rx_list.append(regression_loss_xs.cpu().numpy())
-                loss_list.append(loss.cpu().item())
+                loss_list.append(loss.cpu().numpy())
 
         rList = np.concatenate(r_list)
         ryList = np.concatenate(ry_list)
         rxList = np.concatenate(rx_list)
+        bceList = np.concatenate(bce_list)
+        lossList = np.concatenate(loss_list)
          
         import matplotlib.pyplot as plt
         cols = ['b','g','r','y','k','m','c']
-        fig, ax = plt.subplots(1,4, figsize=(20,5))
+        fig, ax = plt.subplots(1,5, figsize=(25,5))
         ax[0].hist(rList,  bins=20, color=cols[0], label="distribution of ratio")
         ax[1].hist(ryList,bins=20, color=cols[1], label="distribution of offset y error")
         ax[2].hist(rxList,bins=20, color=cols[2], label="distribution of offset x error")
-        ax[3].hist(loss_list,bins=20, color=cols[3], label="distribution of loss")
+        ax[3].hist(lossList,bins=20, color=cols[3], label="distribution of total loss")
+        ax[4].hist(bceList,bins = 20,color = cols[4],label = "BCE")
         ax[0].legend()
         ax[1].legend()
         ax[2].legend() 
         ax[3].legend()
+        ax[4].legend()
         fig.savefig("./"+folder+"_distribution_of_val_data.png")
         
-        zscore = 2
+        zscore = 3
         
-        return estimateMean(rList,zscore), estimateMean(ryList,-zscore), estimateMean(rxList,-zscore), estimateMean(loss_list,-zscore)       
+        return estimateMean(rList,zscore), estimateMean(ryList,-zscore), estimateMean(rxList,-zscore), estimateMean(lossList,-zscore),estimateMean(bceList,-zscore)       
 
 def estimateMean(l,z):
     mean,std = np.mean(l),np.std(l)
     # one z score
     return huber(l)[0].item()-z*huber(l)[1].item()
 if __name__ == "__main__":
+    random.seed(10)
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
     os.environ["CUDA_VISIBLE_DEVICES"]="0"
     folder = "base"
@@ -183,8 +191,8 @@ if __name__ == "__main__":
     net = torch.nn.DataParallel(net)
     #tester = Tester(logger, config, net, args.tag, args.train, args)
     tester = Tester(logger, config, tag=args.tag)
-    t1, t2, t3, t4 = tester.getThresholds(net, folder)
-    logger.info("the threshold 1 is {}, threshold 2 ry is {}, threshold 3 rx is {}, threshold 4 loss is {}".format(t1, t2, t3, t4))
+    t1, t2, t3, t4, t5 = tester.getThresholds(net, folder)
+    logger.info("the threshold 1 is {}, threshold 2 ry is {}, threshold 3 rx is {}, threshold 4 loss is {}, threshold 5 is {}".format(t1, t2, t3, t4, t5))
     # go through all the training set to get the thresholds, three
     
     

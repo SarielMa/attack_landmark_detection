@@ -36,9 +36,9 @@ def IMA_loss(net, img, mask, offset_y, offset_x, guassian_mask,
     idx_n=torch.tensor([], dtype=torch.int64, device=img.device)
     #----------------------------------
     if Yp_ne_Y.sum().item()>0:
-        loss1 = loss_X[Yp_ne_Y].sum()/img.size(0)
+        loss1 = loss_X[Yp_ne_Y].sum()/Yp_ne_Y.sum().item()
     if Yp_e_Y.sum().item()>0:
-        loss2 = loss_X[Yp_e_Y].sum()/img.size(0)
+        loss2 = loss_X[Yp_e_Y].sum()/Yp_e_Y.sum().item()
     #---------------------------------
     train_mode=net.training# record the mode
     #---------------------------------
@@ -197,13 +197,11 @@ def pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask,
     #-----------------
     advc=torch.zeros(img.size(0), dtype=torch.int64, device=img.device)
     #-----------------
-    if rand_init_norm is not None:
-        noise_init=get_noise_init(norm_type, noise_norm, rand_init_norm, img)
-        Xn = img + noise_init
-    elif rand_init_Xn is not None:
-        Xn = rand_init_Xn.clone().detach()
-    else:
-        raise ValueError('invalid input')
+    if rand_init_norm is None:
+        rand_init_norm = noise_norm
+        
+    noise_init=get_noise_init(norm_type, noise_norm, rand_init_norm, img)    
+    Xn = img + noise_init
     #-----------------
     Xn1=img.detach().clone()
     Xn2=img.detach().clone()
@@ -232,12 +230,17 @@ def pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask,
             B=Ypn_e_Y
             loss=-loss
         #---------------------------
-        temp1=(A&A_old)&(advc<1)
+        #temp1=(A&A_old)&(advc<1)
+        temp1=(A&A_old)
         Xn1[temp1]=Xn[temp1].data# last right and this right
-        temp2=(B&A_old)&(advc<1)
+        #temp2=(B&A_old)&(advc<1)
+        temp2=(B&A_old)
         Xn2[temp1]=Xn[temp1].data# last right and this right
         Xn2[temp2]=Xn[temp2].data# last right and this wrong
-        advc[B]+=1#
+        
+        #advc[B]+=1#
+        advc[B] = 1
+        advc[A] = 0
         #---------------------------
         if n < max_iter:
             #loss.backward() will update W.grad
@@ -252,8 +255,8 @@ def pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask,
             #---------------------
             clip_norm_(noise, norm_type, noise_norm)
             Xn = torch.clamp(img+noise, clip_X_min, clip_X_max)
-            Xn = img+noise
-            noise.data -= noise.data-(Xn-img).data
+            #Xn = img+noise
+            #noise.data -= noise.data-(Xn-img).data
             #---------------------
             Ypn_old_e_Y=Ypn_e_Y
             Ypn_old_ne_Y=Ypn_ne_Y

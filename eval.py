@@ -57,7 +57,7 @@ class Evaluater(object):
             diff[i][0] = abs(pred[0][i] - landmark[i][1]) * self.scale_rate_y 
             diff[i][1] = abs(pred[1][i] - landmark[i][0]) * self.scale_rate_x
         Radial_Error = np.sqrt(np.power(diff[:,0], 2) + np.power(diff[:,1], 2))
-        Radial_Error *= self.pixel_spaceing
+        Radial_Error *= self.pixel_spaceing# convert pixel distance to mm
         self.RE_list.append(Radial_Error)
         # for i in range(len(Radial_Error)):
         #     if Radial_Error[i] > 10:
@@ -100,31 +100,31 @@ class Evaluater(object):
         with open('results.csv', 'w') as f:
             writer = csv.writer(f)
             writer.writerow(Mean_RE_channel.tolist())
-        self.logger.info("ALL MRE {}".format(Mean_RE_channel.mean()))
+        print("ALL MRE {}".format(Mean_RE_channel.mean()))
 
         for radius in self.recall_radius:
             total = temp.size
             shot = (temp < radius).sum()
-            self.logger.info("ALL SDR {}mm  {}".format\
+            print("ALL SDR {}mm  {}".format\
                 (radius, shot * 100 / total))
                 
     def my_cal_metrics(self):
         # calculate MRE SDR
         temp = np.array(self.RE_list)
         Mean_RE_channel = temp.mean(axis=0)
-        self.logger.info(Mean_RE_channel)
+        print(Mean_RE_channel)
         #with open('results.csv', 'w') as f:
         #    writer = csv.writer(f)
         #    writer.writerow(Mean_RE_channel.tolist())
         All_MRE = Mean_RE_channel.mean()
-        self.logger.info("ALL MRE {}".format(All_MRE))
+        print("ALL MRE {}".format(All_MRE))
         reses = []
         for radius in self.recall_radius:
             total = temp.size
             shot = (temp < radius).sum()
             res = shot / total
             reses.append(res)
-            self.logger.info("ALL SDR {}mm  {}".format\
+            print("ALL SDR {}mm  {}".format\
                 (radius,res))
         return All_MRE, reses
     

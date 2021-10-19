@@ -20,193 +20,28 @@ from mylogger import get_mylogger, set_logger_dir
 from myTest import Tester
 import matplotlib.pyplot as plt
 import numpy as np
+from PGD import pgd_attack
+from metric import total_loss, l1_matric 
 
-def clip_norm_(noise, norm_type, norm_max):
-    if not isinstance(norm_max, torch.Tensor):
-        clip_normA_(noise, norm_type, norm_max)
-    else:
-        clip_normB_(noise, norm_type, norm_max)
-#%%
-def clip_normA_(noise, norm_type, norm_max):
-    # noise is a tensor modified in place, noise.size(0) is batch_size
-    # norm_type can be np.inf, 1 or 2, or p
-    # norm_max is noise level
-    if noise.size(0) == 0:
-        return noise
-    with torch.no_grad():
-        if norm_type == np.inf or norm_type == 'Linf':
-            noise.clamp_(-norm_max, norm_max)
-        elif norm_type == 2 or norm_type == 'L2':
-            N=noise.view(noise.size(0), -1)
-            l2_norm= torch.sqrt(torch.sum(N**2, dim=1, keepdim=True))
-            temp = (l2_norm > norm_max).squeeze()
-            if temp.sum() > 0:
-                N[temp]*=norm_max/l2_norm[temp]
-        else:
-            raise NotImplementedError("other norm clip is not implemented.")
-    #-----------
-    return noise
-#%%
-def clip_normB_(noise, norm_type, norm_max):
-    # noise is a tensor modified in place, noise.size(0) is batch_size
-    # norm_type can be np.inf, 1 or 2, or p
-    # norm_max[k] is noise level for every noise[k]
-    if noise.size(0) == 0:
-        return noise
-    with torch.no_grad():
-        if norm_type == np.inf or norm_type == 'Linf':
-            #for k in range(noise.size(0)):
-            #    noise[k].clamp_(-norm_max[k], norm_max[k])
-            N=noise.view(noise.size(0), -1)
-            norm_max=norm_max.view(norm_max.size(0), -1)
-            N=torch.max(torch.min(N, norm_max), -norm_max)
-            N=N.view(noise.size())
-            noise-=noise-N
-        elif norm_type == 2 or norm_type == 'L2':
-            N=noise.view(noise.size(0), -1)
-            l2_norm= torch.sqrt(torch.sum(N**2, dim=1, keepdim=True))
-            norm_max=norm_max.view(norm_max.size(0), 1)
-            #print(l2_norm.shape, norm_max.shape)
-            temp = (l2_norm > norm_max).squeeze()
-            if temp.sum() > 0:
-                norm_max=norm_max[temp]
-                norm_max=norm_max.view(norm_max.size(0), -1)
-                N[temp]*=norm_max/l2_norm[temp]
-        else:
-            raise NotImplementedError("not implemented.")
-        #-----------
-    return noise
-#%%
-def normalize_grad_(x_grad, norm_type, eps=1e-8):
-    #x_grad is modified in place
-    #x_grad.size(0) is batch_size
-    with torch.no_grad():
-        if norm_type == np.inf or norm_type == 'Linf':
-            x_grad-=x_grad-x_grad.sign()
-        elif norm_type == 2 or norm_type == 'L2':
-            g=x_grad.view(x_grad.size(0), -1)
-            l2_norm=torch.sqrt(torch.sum(g**2, dim=1, keepdim=True))
-            l2_norm = torch.max(l2_norm, torch.tensor(eps, dtype=l2_norm.dtype, device=l2_norm.device))
-            g *= 1/l2_norm
-        else:
-            raise NotImplementedError("not implemented.")
-    return x_grad
-#%%
-def normalize_noise_(noise, norm_type, eps=1e-8):
-    if noise.size(0) == 0:
-        return noise
-    with torch.no_grad():
-        N=noise.view(noise.size(0), -1)
-        if norm_type == np.inf or norm_type == 'Linf':
-            linf_norm=N.abs().max(dim=1, keepdim=True)[0]
-            N *= 1/(linf_norm+eps)
-        elif norm_type == 2 or norm_type == 'L2':
-            l2_norm=torch.sqrt(torch.sum(N**2, dim=1, keepdim=True))
-            l2_norm = torch.max(l2_norm, torch.tensor(eps, dtype=l2_norm.dtype, device=l2_norm.device))
-            N *= 1/l2_norm
-        else:
-            raise NotImplementedError("not implemented.")
-    return noise
-#%%
-def get_noise_init(norm_type, noise_norm, init_norm, X):
-    noise_init=2*torch.rand_like(X)-1
-    noise_init=noise_init.view(X.size(0),-1)
-    if isinstance(init_norm, torch.Tensor):
-        init_norm=init_norm.view(X.size(0), -1)
-    noise_init=init_norm*noise_init
-    noise_init=noise_init.view(X.size())
-    clip_norm_(noise_init, norm_type, init_norm)
-    clip_norm_(noise_init, norm_type, noise_norm)
-    return noise_init
 
-def L1Loss(pred, gt, mask=None,reduction = "mean"):
-    # L1 Loss for offset map
-    assert(pred.shape == gt.shape)
-    gap = pred - gt
-    distence = gap.abs()
-    if mask is not None:
-        # Caculate grad of the area under mask
-        distence = distence * mask
-        
-    if reduction =="mean":
-        # sum in this function means 'mean'
-        return distence.sum() / mask.sum()
-        # return distence.mean()
+#
+def run_model_adv_reg(net, img, mask, offset_y, offset_x, guassian_mask, return_loss=False, reduction='none'):
+    heatmap, regression_y, regression_x = net(img)
+    
+    if return_loss == True:
+        loss, _=total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, reduction = reduction)       
+        return heatmap, regression_y, regression_x, loss
     else:
-        return distence.sum([1,2,3])/mask.sum([1,2,3])
+        return heatmap, regression_y, regression_x
+    
+def classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, threshold="none"):
+    #useless
+    threshold1 = 10000000
 
-def total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, lamb=2, reduction = 'sum'):
-    # loss
-    if reduction == 'sum':
-        loss_logic_fn = BCELoss()
-        loss_regression_fn = L1Loss
-        # the loss for heatmap
-        logic_loss = loss_logic_fn(heatmap, guassian_mask)
-        # the loss for offset
-        regression_loss_y = loss_regression_fn(regression_y, offset_y, mask, reduction = "mean")
-        regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "mean")
-        return  regression_loss_x + regression_loss_y + logic_loss * lamb, regression_loss_x + regression_loss_y
-    else: 
-        # every sample has its loss, none reduction
-        loss_logic_fn = BCELoss(reduction = reduction)
-        loss_regression_fn = L1Loss
-        # the loss for heatmap
-        logic_loss = loss_logic_fn(heatmap, guassian_mask)
-        logic_loss = logic_loss.view(logic_loss.size(0),-1).mean(1)
-        # the loss for offset
-        regression_loss_y = loss_regression_fn(regression_y, offset_y, mask, reduction = "none")
-        regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "none")
-        return  regression_loss_x + regression_loss_y + logic_loss * lamb, regression_loss_x + regression_loss_y
-#%%
-def pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, 
-               noise_norm, norm_type, max_iter, step,
-               rand_init=True, rand_init_norm=None, targeted=False,
-               clip_X_min=-1, clip_X_max=1, use_optimizer=False, loss_fn=None):
-    #-----------------------------------------------------
-    if loss_fn is None :
-        raise ValueError('loss_fn is unkown')
-    #-----------------
-    img = img.detach()
-    #-----------------
-    if rand_init == True:
-        init_norm=rand_init_norm
-        if rand_init_norm is None:
-            init_norm=noise_norm
-        noise_init=get_noise_init(norm_type, noise_norm, init_norm, img)
-        Xn = img + noise_init
-    else:
-        Xn = img.clone().detach() # must clone
-    #-----------------
-    noise_new=(Xn-img).detach()
-    if use_optimizer == True:
-        optimizer = optim.Adamax([noise_new], lr=step)
-    #-----------------
-    for n in range(0, max_iter):
-        Xn = Xn.detach()
-        Xn.requires_grad = True
-        heatmap, regression_y, regression_x = net(Xn)
-        loss,_  = total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
-        #---------------------------
-        if targeted == True:
-            loss=-loss
-        #---------------------------
-        #loss.backward() will update W.grad
-        grad_n=torch.autograd.grad(loss, Xn)[0]
-        grad_n=normalize_grad_(grad_n, norm_type)
-        if use_optimizer == True:
-            noise_new.grad=-grad_n.detach() #grad ascent to maximize loss
-            optimizer.step()
-        else:
-            Xnew = Xn.detach() + step*grad_n.detach()
-            noise_new = Xnew-img
-        #---------------------
-        clip_norm_(noise_new, norm_type, noise_norm)
-        Xn = torch.clamp(img+noise_new, clip_X_min, clip_X_max)
-        Xn = img + noise_new
-        noise_new.data -= noise_new.data-(Xn-img).data
-        Xn=Xn.detach()
-    #---------------------------
-    return Xn
+    loss, _=total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask,  reduction='none') 
+    Yp_e_Y=(loss<=threshold1) 
+    #Yp_e_Y=(r>=threshold1) & (ry <=threshold2) & (rx <= threshold3)
+    return Yp_e_Y
 #%%
 
 if __name__ == "__main__":
@@ -214,8 +49,8 @@ if __name__ == "__main__":
     #device = torch.device('cuda:1')
     # Parse command line options
     parser = argparse.ArgumentParser(description="Train Unet landmark detection network")
-    parser.add_argument("--tag", default='pgd_20', help="name of the run")
-    parser.add_argument("--cuda", default='0', help="cuda id")
+    parser.add_argument("--tag", default='PGD_10', help="name of the run")
+    parser.add_argument("--cuda", default='1', help="cuda id")
     parser.add_argument("--config_file", default="config.yaml", help="default configs")
     args = parser.parse_args()
     
@@ -287,8 +122,19 @@ if __name__ == "__main__":
             heatmap, regression_y, regression_x = net(img)
             lossp, regLossp  = total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
             
-            imgn = pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, 
-                              noise, norm_type, max_iter,step, loss_fn=total_loss)
+            imgn,_ = pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, 
+                               noise, norm_type, max_iter, step,
+                               rand_init_norm=None, rand_init_Xn=None,
+                               targeted=False, clip_X_min=-1, clip_X_max=1,
+                               refine_Xn_max_iter=10,
+                               Xn1_equal_X=False, Xn2_equal_Xn=False,
+                               stop_near_boundary=False,
+                               stop_if_label_change=False,
+                               stop_if_label_change_next_step=False,
+                               use_optimizer=False,
+                               run_model=run_model_adv_reg, classify_model_output=classify_model_std_output_reg,               
+                               model_eval_attack=False)
+            
             heatmapn, regression_yn, regression_xn = net(imgn)
             lossn, regLossn  = total_loss(heatmapn, guassian_mask, regression_yn, offset_y, regression_xn, offset_x, mask)
             

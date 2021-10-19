@@ -212,7 +212,7 @@ class Tester(object):
         regression_loss_list = list()   
         logic_loss_list = list()
         
-        dataset_val = Cephalometric(self.datapath, "val")
+        dataset_val = Cephalometric(self.datapath, "Val")
         dataloader_val = DataLoader(dataset_val, batch_size=1, shuffle=False, num_workers=self.nWorkers)
         
         for img, mask, guassian_mask, offset_y, offset_x, landmark_list in tqdm(dataloader_val):

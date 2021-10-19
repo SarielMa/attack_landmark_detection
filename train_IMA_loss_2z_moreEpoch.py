@@ -21,7 +21,7 @@ from myTest import Tester
 import matplotlib.pyplot as plt
 import numpy as np
 from PGD import IMA_loss
-from metric import total_loss, l1_matric  
+from metric import total_loss  
 
 def run_model_std_reg(net, img, mask, offset_y, offset_x, guassian_mask, return_loss=False, reduction='none'):
     heatmap, regression_y, regression_x = net(img)
@@ -41,26 +41,20 @@ def run_model_adv_reg(net, img, mask, offset_y, offset_x, guassian_mask, return_
     else:
         return heatmap, regression_y, regression_x
 #
-def classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
+def classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, threshold="2z"):
+    threshold1 = 10000000000
 
-    threshold1 = 0
-    #threshold2=0.0344853832236048
-    #threshold3 = 0.03364063541152001
-    r, ry, rx= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
-    Yp_e_Y=(r>=threshold1)
+    loss, _=total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask,  reduction='none') 
+    Yp_e_Y=(loss<=threshold1) 
     #Yp_e_Y=(r>=threshold1) & (ry <=threshold2) & (rx <= threshold3)
     return Yp_e_Y
 #
-def classify_model_adv_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
+def classify_model_adv_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, threshold="2z"):
 
-    threshold1 = 0.9154986890761969
-    #threshold2 = 0.029883423222170708
-    #threshold3 = 0.031045339547359305
-    threshold2 = 0.11717294825643662
-    threshold3 = 0.10030718302724811
-    r, ry, rx= l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
-    Yp_e_Y=(r>=threshold1) & (ry <=threshold2) & (rx <= threshold3) 
-    #Yp_e_Y=(r>=threshold1) 
+    threshold1 = 0.19844462604456323
+    loss, _=total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask,  reduction='none') 
+    #Yp_e_Y=(r>=threshold1) & (ry <=threshold2) & (rx <= threshold3)
+    Yp_e_Y=(loss<=threshold1) 
     return Yp_e_Y
 
 def IMA_update_margin(E, delta, max_margin, flag1, flag2, margin_new):
@@ -76,6 +70,16 @@ def IMA_update_margin(E, delta, max_margin, flag1, flag2, margin_new):
     E[flag2==0]=delta
     E.clamp_(min=0, max=max_margin)
     print (expand.sum().item(),"samples are expanded.....")
+    
+def final_margin_refine(E, delta, max_margin, flag1, flag2, margin_new):
+    print ("final margin refine..., no expand in this epoch")
+    expand=(flag1==1)&(flag2==1)
+    no_expand=(flag1==0)&(flag2==1)
+    #E[expand]+=delta
+    E[no_expand]=margin_new[no_expand]
+    #when wrongly classified, do not re-initialize
+    E[flag2==0]=delta
+    E.clamp_(min=0, max=max_margin)    
 
 if __name__ == "__main__":
     #CUDA_VISIBLE_DEVICES=0
@@ -83,10 +87,11 @@ if __name__ == "__main__":
     #device = torch.device('cuda:1')
     # Parse command line options
     parser = argparse.ArgumentParser(description="Train Unet landmark detection network")
-    parser.add_argument("--tag", default='IMA_40_all_Val2Z', help="name of the run")
+    parser.add_argument("--tag", default='try_10', help="name of the run")
     parser.add_argument("--config_file", default="config.yaml", help="default configs")
     parser.add_argument("--cuda", default="1")
     parser.add_argument("--pretrain",default = "False")
+    parser.add_argument("--epoch")
     #parser.add_argument("--threshold", default = "min")
     args = parser.parse_args()
  
@@ -155,15 +160,18 @@ if __name__ == "__main__":
     elif stop==3:
         stop_if_label_change_next_step=True  
     #======================
-    
+    num_epochs = int(args.epoch)
     sample_count_train = 150
     noise = float(args.tag.split("_")[1])
-    epoch_refine = config['num_epochs']
+    epoch_refine = 230
     delta = 23*noise/epoch_refine
     #delta = 1
     E = delta*torch.ones(sample_count_train, dtype=torch.float32)
-    alpha = 4    
+    bottom = delta*torch.ones(sample_count_train, dtype=torch.float32)
+    #alpha = 5 
+    
     max_iter=20   
+    step  = 5*noise/max_iter
     norm_type = 2
     #======================
     
@@ -171,7 +179,7 @@ if __name__ == "__main__":
     loss_val_list = list()
     MRE_list = list()
     #config['num_epochs']
-    for epoch in range(config['num_epochs']):
+    for epoch in range(num_epochs):
         loss_list = list()
         regression_loss_list = list()
         flag1=torch.zeros(len(E), dtype=torch.float32)
@@ -188,7 +196,7 @@ if __name__ == "__main__":
             #......................................................................................................
             rand_init_norm=torch.clamp(E[idx]-delta, min=delta).cuda()
             margin=E[idx].cuda()
-            step=alpha*margin/max_iter
+            #step=alpha*margin/max_iter
             #......................................................................................................
             loss, heatmap, regression_y, regression_x, advc, Xn ,Ypn, idx_n = IMA_loss(net, img, mask, offset_y, offset_x, guassian_mask,
                                                     norm_type= norm_type,
@@ -222,9 +230,12 @@ if __name__ == "__main__":
                 temp=torch.norm((Xn-img[idx_n]).view(Xn.shape[0], -1), p=norm_type, dim=1).cpu()
                 #E_new[idx[idx_n]]=torch.min(E_new[idx[idx_n]], temp)     
                 #bottom = args.delta*torch.ones(E_new.size(0), dtype=E_new.dtype, device=E_new.device)
-                E_new[idx[idx_n]] = temp# use mean to refine the margin to reduce the effect of augmentation on margins
+                E_new[idx[idx_n]] = torch.max((E_new[idx[idx_n]]+temp)/2, bottom[idx[idx_n]])# use mean to refine the margin to reduce the effect of augmentation on margins
         #-----------------------------------------------------------------------
-        IMA_update_margin(E, delta, noise, flag1, flag2, E_new) 
+        if epoch < num_epochs:
+            IMA_update_margin(E, delta, noise, flag1, flag2, E_new) 
+        else:
+            final_margin_refine(E, delta, noise, flag1, flag2, E_new)
         loss_train = sum(loss_list) / dataset.__len__()
         loss_train_list.append(loss_train)
         logger.info("Epoch {} Training loss {}".format(epoch, loss_train))

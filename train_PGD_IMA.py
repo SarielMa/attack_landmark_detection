@@ -214,10 +214,10 @@ if __name__ == "__main__":
     #device = torch.device('cuda:1')
     # Parse command line options
     parser = argparse.ArgumentParser(description="Train Unet landmark detection network")
-    parser.add_argument("--tag", default='PGD_IMA_3z', help="name of the run")
+    parser.add_argument("--tag", default='PGD_IMA_lossVal3Z', help="name of the run")
     parser.add_argument("--cuda", default='1', help="cuda id")
     parser.add_argument("--config_file", default="config.yaml", help="default configs")
-    parser.add_argument("--pretrain")
+    parser.add_argument("--pretrain", default = "false")
     args = parser.parse_args()
     
     #CUDA_VISIBLE_DEVICES=0
@@ -279,7 +279,9 @@ if __name__ == "__main__":
  
     #======================
     #load the margins
-    b = np.load("./runs/margin_non_pretrain_3z/margins.npy")
+    marginpath = "./runs/margin_1016/margins.npy"
+    print ("margin path is", marginpath)
+    b = np.load(marginpath)
     noise = torch.from_numpy(b)
     assert(isinstance(noise, torch.Tensor))
     norm_type = 2

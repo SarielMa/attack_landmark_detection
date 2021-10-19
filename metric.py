@@ -1,5 +1,4 @@
 import torch
-
 from torch.nn import BCELoss
 
 
@@ -45,16 +44,12 @@ def total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, off
         regression_loss_y = loss_regression_fn(regression_y, offset_y, mask, reduction = "none")
         regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "none")
         return  regression_loss_x + regression_loss_y + logic_loss * lamb, regression_loss_x + regression_loss_y
-  
+
+    
 def l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
     #loss_logic_fn = L1Loss
     loss_regression_fn = L1Loss
-    # the loss for heatmap
-    #logic_loss = loss_logic_fn(heatmap, guassian_mask, mask, reduction = "none")
-    #guassian_mask=guassian_mask/torch.norm(guassian_mask, p=2, keepdim=True)
-    #heatmap=heatmap/torch.norm(heatmap, p=2, keepdim=True)
-    #r=(heatmap*guassian_mask).sum(dim=(2,3))
-    #r=r.mean(dim = 1)
+
     with torch.no_grad():
         guassian_mask=guassian_mask/torch.norm(guassian_mask, p=2,dim = (2,3), keepdim=True)
         heatmap=heatmap/torch.norm(heatmap, p=2,dim = (2,3), keepdim=True)
@@ -64,4 +59,16 @@ def l1_matric(heatmap, guassian_mask, regression_y, offset_y, regression_x, offs
         regression_loss_ys = loss_regression_fn(regression_y, offset_y, mask, reduction = "none")
         regression_loss_xs = loss_regression_fn(regression_x, offset_x, mask, reduction = "none")
     return  r, regression_loss_ys,regression_loss_xs
+
+def l1_matric_v2(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
+    #loss_logic_fn = L1Loss
+    loss_regression_fn = L1Loss
+    loss_logic_fn = BCELoss(reduction = 'none')
+    with torch.no_grad():    
+        bce= loss_logic_fn(heatmap, guassian_mask)
+        bce = bce.view(bce.size(0),-1).mean(1)
+        # the loss for offset
+        regression_loss_ys = loss_regression_fn(regression_y, offset_y, mask, reduction = "none")
+        regression_loss_xs = loss_regression_fn(regression_x, offset_x, mask, reduction = "none")
+    return  bce, regression_loss_ys,regression_loss_xs
 
