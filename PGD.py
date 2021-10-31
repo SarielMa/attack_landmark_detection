@@ -50,6 +50,7 @@ def IMA_loss(net, img, mask, offset_y, offset_x, guassian_mask,
     
     #----------------------------------
     if enable_loss3 == True:
+        #print ("loss3 is enabled...with n samples ",Yp_e_Y.sum().item() )
         Xn, advc = repeated_pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, 
                                                noise_norm=margin, norm_type=norm_type,
                                                max_iter=max_iter, step=step,
@@ -176,7 +177,7 @@ def clip_normB_(noise, norm_type, norm_max):
     return noise
 #%%
 
-def pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, 
+def pgd_attack_lower(net, img, mask, offset_y, offset_x, guassian_mask, 
                noise_norm, norm_type, max_iter, step,
                rand_init_norm=None, rand_init_Xn=None,
                targeted=False, clip_X_min=-1, clip_X_max=1,
@@ -275,6 +276,107 @@ def pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask,
         net.train()
     #---------------------------
     return Xn_out, advc
+
+def pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, 
+               noise_norm, norm_type, max_iter, step,
+               rand_init_norm=None, rand_init_Xn=None,
+               targeted=False, clip_X_min=-1, clip_X_max=1,
+               refine_Xn_max_iter=10,
+               Xn1_equal_X=False, Xn2_equal_Xn=False,
+               stop_near_boundary=False,
+               stop_if_label_change=False,
+               stop_if_label_change_next_step=False,
+               use_optimizer=False,
+               run_model=None, classify_model_output=None,               
+               model_eval_attack=False):
+    #-------------------------------------------
+    train_mode=net.training# record the mode
+    if model_eval_attack == True and train_mode == True:
+        net.eval()#set model to evaluation mode
+    #-----------------
+    img = img.detach()
+    #-----------------
+    advc=torch.zeros(img.size(0), dtype=torch.int64, device=img.device)
+    #-----------------
+    if rand_init_norm is None:
+        rand_init_norm = noise_norm
+        
+    noise_init=get_noise_init(norm_type, noise_norm, rand_init_norm, img)    
+    Xn = img + noise_init
+    #-----------------
+    Xn1=img.detach().clone()
+    Xn2=img.detach().clone()
+    Ypn_old_e_Y=torch.ones(guassian_mask.shape[0], dtype=torch.bool, device=guassian_mask.device)
+    Ypn_old_ne_Y=~Ypn_old_e_Y
+    #-----------------
+    noise=(Xn-img).detach()
+    if use_optimizer == True:
+        optimizer = optim.Adamax([noise], lr=step)
+    #-----------------
+    for n in range(0, max_iter+1):
+        Xn = Xn.detach()
+        Xn.requires_grad = True        
+        heatmap, regression_y, regression_x, loss=run_model(net, Xn, mask, offset_y, offset_x, guassian_mask, return_loss=True, reduction='sum')
+        Ypn_e_Y=classify_model_output(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
+        Ypn_ne_Y=~Ypn_e_Y
+        #---------------------------
+        #targeted attack, Y should be filled with targeted output
+        if targeted == False:
+            A=Ypn_e_Y
+            A_old=Ypn_old_e_Y
+            B=Ypn_ne_Y
+        else:
+            A=Ypn_ne_Y
+            A_old=Ypn_old_ne_Y
+            B=Ypn_e_Y
+            loss=-loss
+        #---------------------------
+        temp1=(A&A_old)&(advc<1)
+        #temp1=(A&A_old)
+        Xn1[temp1]=Xn[temp1].data# last right and this right
+        temp2=(B&A_old)&(advc<1)
+        #temp2=(B&A_old)
+        Xn2[temp1]=Xn[temp1].data# last right and this right
+        Xn2[temp2]=Xn[temp2].data# last right and this wrong
+        
+        advc[B]+=1#
+        #advc[B] = 1
+        #advc[A] = 0
+        #---------------------------
+        if n < max_iter:
+            #loss.backward() will update W.grad
+            grad_n=torch.autograd.grad(loss, Xn)[0]
+            grad_n=normalize_grad_(grad_n, norm_type)
+            if use_optimizer == True:
+                noise.grad=-grad_n #grad ascent to maximize loss
+                optimizer.step()
+            else:
+                Xnew = Xn + step*grad_n
+                noise = Xnew-img
+            #---------------------
+            clip_norm_(noise, norm_type, noise_norm)
+            Xn = torch.clamp(img+noise, clip_X_min, clip_X_max)
+            #Xn = img+noise
+            #noise.data -= noise.data-(Xn-img).data
+            #---------------------
+            Ypn_old_e_Y=Ypn_e_Y
+            Ypn_old_ne_Y=Ypn_ne_Y
+    #---------------------------
+    Xn_out = Xn.detach()
+    if Xn1_equal_X:
+        Xn1=img.detach().clone()
+    if Xn2_equal_Xn:
+        Xn2=Xn
+    if stop_near_boundary == True:
+        temp=advc>0
+        if temp.sum()>0:
+            Xn_out=refine_Xn_onto_boundary(net, Xn1, Xn2, mask, offset_y, offset_x, guassian_mask, refine_Xn_max_iter, run_model, classify_model_output)
+    #---------------------------
+    if train_mode == True and net.training == False:
+        net.train()
+    #---------------------------
+    return Xn_out, advc
+
 #%%
 def refine_onto_boundary(net, Xn1, Xn2, mask, offset_y, offset_x, guassian_mask, max_iter, run_model, classify_model_output):
 #note: Xn1 and Xn2 will be modified

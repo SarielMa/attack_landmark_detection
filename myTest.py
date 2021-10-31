@@ -16,6 +16,7 @@ from mylogger import get_mylogger, set_logger_dir
 from eval import Evaluater
 from utils import to_Image, voting, visualize, make_dir
 from attack import FGSMAttack
+from metric import dice_loss
 
 def get_MICCAI(miccai):
     landmark_list = dict()
@@ -193,6 +194,59 @@ class Tester(object):
         return MRE
     
     def validate(self, net=None):
+        self.evaluater.reset()
+        if net is not None:
+            self.model = net
+        assert(hasattr(self, 'model'))
+        ID = 0
+
+        distance_list = dict()
+        mean_list = dict()
+        for i in range(19):
+            distance_list[i] = list()
+            mean_list[i] = list()
+
+
+        loss_regression_fn = L1Loss
+        
+        train_loss_list = list()
+        regression_loss_list = list()   
+        logic_loss_list = list()
+        
+        dataset_val = Cephalometric(self.datapath, "Val")
+        dataloader_val = DataLoader(dataset_val, batch_size=1, shuffle=False, num_workers=self.nWorkers)
+        
+        for img, mask, guassian_mask, offset_y, offset_x, landmark_list in tqdm(dataloader_val):
+            img, mask, offset_y, offset_x, guassian_mask = img.cuda(), mask.cuda(), \
+                offset_y.cuda(), offset_x.cuda(), guassian_mask.cuda()
+            with torch.no_grad():
+                
+                heatmap, regression_y, regression_x = self.model(img)
+                
+                de_loss = dice_loss(heatmap, guassian_mask)
+                regression_loss_y = loss_regression_fn(regression_y, offset_y, mask)
+                regression_loss_x = loss_regression_fn(regression_x, offset_x, mask)
+    
+                loss = 0.5*de_loss + regression_loss_x + regression_loss_y
+                loss_regression = regression_loss_y + regression_loss_x
+                # acc them
+                train_loss_list.append(loss)
+                regression_loss_list.append(loss_regression)
+                logic_loss_list.append(de_loss)
+                # Vote for the final accurate point
+                pred_landmark = voting(heatmap, regression_y, regression_x, self.Radius)
+    
+                self.evaluater.record(pred_landmark, landmark_list)
+            
+        loss = sum(train_loss_list) / dataset_val.__len__()
+        logic_loss = sum(logic_loss_list) / dataset_val.__len__()
+        loss_reg = sum(regression_loss_list) / dataset_val.__len__()  
+          
+        MRE, _ = self.evaluater.my_cal_metrics()
+
+        return MRE, loss, logic_loss, loss_reg
+    
+    def validate_BCE(self, net=None):
         self.evaluater.reset()
         if net is not None:
             self.model = net

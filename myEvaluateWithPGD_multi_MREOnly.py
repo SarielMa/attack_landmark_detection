@@ -380,7 +380,7 @@ if __name__ == "__main__":
     parser.add_argument("--train", default="", help="default configs")
     parser.add_argument("--rand", default="", help="default configs")
     parser.add_argument("--epsilon", default="8", help="default configs")
-    parser.add_argument("--cuda", default="1", help="default configs")
+    parser.add_argument("--cuda", default="0", help="default configs")
     parser.add_argument("--pretrain", default="False", help="default configs")
     parser.add_argument("--testset", default="Test1")
     args = parser.parse_args()
@@ -408,7 +408,7 @@ if __name__ == "__main__":
     #========================
     import matplotlib.pyplot as plt
     #fig, ax = plt.subplots(3,2, figsize = (10,15))
-    plt.figure(figsize = (10,15))
+    plt.figure(figsize = (5,5))
     cm = plt.get_cmap("gist_rainbow")
     noises = [0,1,2,3]
     #noises = [0,5,10,20,40]
@@ -471,7 +471,7 @@ if __name__ == "__main__":
             SDR3_list.append(SDR3)
             SDR4_list.append(SDR4)
             
-        plt.subplot(3,1,1)
+        #plt.subplot(3,1,1)
         plt.yscale("log")
         plt.plot(noises,MRE_list, color = cm(1.0*i/len(folders)), label = folder )
         plt.ylabel("log MRE (mm)")
@@ -479,35 +479,15 @@ if __name__ == "__main__":
         plt.legend()    
         rows1.append([folder]+[str(round(i,3)) for i in MRE_list])
         
-        
-        
-        plt.subplot(3,2,3)
-        plt.plot(noises,SDR2_list, color = cm(1.0*i/len(folders)), label = folder )
-        plt.ylabel("SDR 2mm")
-        plt.xlabel("noise (L2)")
-        plt.legend() 
+
         rows2.append([folder]+[str(round(i,3)) for i in SDR2_list])
         
-        plt.subplot(3,2,4)
-        plt.plot(noises,SDR25_list, color = cm(1.0*i/len(folders)), label = folder )
-        plt.ylabel("SDR 2.5mm")
-        plt.xlabel("noise (L2)")
-        plt.legend()
+
         rows3.append([folder]+[str(round(i,3)) for i in SDR25_list])
         
-        
-        plt.subplot(3,2,5)
-        plt.plot(noises,SDR3_list, color = cm(1.0*i/len(folders)), label = folder )
-        plt.ylabel("SDR 3mm")
-        plt.xlabel("noise (L2)")
-        plt.legend()
+
         rows4.append([folder]+[str(round(i,3)) for i in SDR3_list])
-        
-        plt.subplot(3,2,6)
-        plt.plot(noises,SDR4_list, color = cm(1.0*i/len(folders)), label = folder )
-        plt.ylabel("SDR 4mm")
-        plt.xlabel("noise (L2)")
-        plt.legend()
+
         rows5.append([folder]+[str(round(i,3)) for i in SDR4_list])
         
         

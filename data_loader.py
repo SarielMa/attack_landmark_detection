@@ -8,7 +8,7 @@ import math
 
 class Cephalometric(data.Dataset):
 
-    def __init__(self, pathDataset, mode, R_ratio=0.05, num_landmark=19, size=[400, 320]):
+    def __init__(self, pathDataset, mode, R_ratio=0.05, num_landmark=19, size=[200, 160]):
         
         self.num_landmark = num_landmark
         self.Radius = int(max(size) * R_ratio)
@@ -52,10 +52,14 @@ class Cephalometric(data.Dataset):
         elif mode == 'Val':
             self.pth_Image = os.path.join(self.pth_Image, 'Test1Data')
             start = 151
-            end = 160
+            end = 200
+        elif mode == 'ValSingle':
+            self.pth_Image = os.path.join(self.pth_Image, 'Test2Data')
+            start = 301
+            end = 301
         elif mode == 'Test1':
             self.pth_Image = os.path.join(self.pth_Image, 'Test1Data')
-            start = 200
+            start = 201
             end = 300
         elif mode == 'Test2':
             self.pth_Image = os.path.join(self.pth_Image, 'Test2Data')
@@ -131,7 +135,7 @@ class Cephalometric(data.Dataset):
     
 class Cephalometric_IMA(data.Dataset):
 
-    def __init__(self, pathDataset, mode, R_ratio=0.05, num_landmark=19, size=[400, 320]):
+    def __init__(self, pathDataset, mode, R_ratio=0.05, num_landmark=19, size=[200, 160]):
         
         self.num_landmark = num_landmark
         self.Radius = int(max(size) * R_ratio)

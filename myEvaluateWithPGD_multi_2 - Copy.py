@@ -218,31 +218,6 @@ def heatmap_dice_loss(heatmap, guassian_mask, regression_y, offset_y, regression
         regression_loss_y = loss_regression_fn(regression_y, offset_y, mask, reduction = "none")
         regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "none")
         return  logic_loss, regression_loss_x + regression_loss_y
-
-def reg_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, lamb=2, reduction = 'sum'):
-    # loss
-    if reduction == 'sum':
-        
-        loss_regression_fn = L1Loss
-        # the loss for heatmap
-        logic_loss = dice_loss(heatmap, mask, reduction='mean')
-        # the loss for offset
-        regression_loss_y = loss_regression_fn(regression_y, offset_y, mask, reduction = "mean")
-        regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "mean")
-        return  regression_loss_x + regression_loss_y,logic_loss
-    
-def total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, lamb=2, reduction = 'sum'):
-    # loss
-    if reduction == 'sum':
-        
-        loss_regression_fn = L1Loss
-        # the loss for heatmap
-        logic_loss = dice_loss(heatmap, mask, reduction='mean')
-        # the loss for offset
-        regression_loss_y = loss_regression_fn(regression_y, offset_y, mask, reduction = "mean")
-        regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "mean")
-        return  logic_loss + regression_loss_x + regression_loss_y,logic_loss
-
     
 pgd_loss = heatmap_dice_loss
 
@@ -288,21 +263,20 @@ def pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, noise_norm, no
         #---------------------
         clip_norm_(noise_new, norm_type, noise_norm)
         Xn = torch.clamp(img+noise_new, clip_X_min, clip_X_max)
-        Xn = img + noise_new
-        noise_new.data -= noise_new.data-(Xn-img).data
+        #Xn = img + noise_new
+        #noise_new.data -= noise_new.data-(Xn-img).data
         Xn=Xn.detach()
     #---------------------------
     return Xn
 
 class Tester(object):
-    def __init__(self,logger, config, testset):
+    def __init__(self,logger, config, dataset):
         self.datapath = config['dataset_pth']        
         self.nWorkers = config['num_workers']    
         self.logger = logger
-        self.dataset_val = Cephalometric(self.datapath, testset)
+        self.dataset_val = Cephalometric(self.datapath, dataset)
         self.dataloader_val = DataLoader(self.dataset_val, batch_size=16, shuffle=False, num_workers=self.nWorkers)
         
-
     
     def test(self, net, noise=0, norm_type = 2, max_iter = 100):       
         distance_list = dict()
@@ -351,6 +325,16 @@ class Tester(object):
             with torch.no_grad():    
                 heatmap, regression_y, regression_x = net(img)
                 
+                logic_loss = loss_logic_fn(heatmap, guassian_mask)
+                regression_loss_y = loss_regression_fn(regression_y, offset_y, mask)
+                regression_loss_x = loss_regression_fn(regression_x, offset_x, mask)
+    
+                loss = logic_loss + regression_loss_x + regression_loss_y
+                loss_regression = regression_loss_y + regression_loss_x
+                # acc them
+                train_loss_list.append(loss)
+                regression_loss_list.append(loss_regression)
+                logic_loss_list.append(logic_loss)
                 # Vote for the final accurate point, the batch size must be 1 here
                 pred_landmark = voting(heatmap, regression_y, regression_x, Radius)
     
@@ -362,7 +346,7 @@ class Tester(object):
           
         MRE, SDR = evaluater.my_cal_metrics()
 
-        return MRE,SDR[0], SDR[1], SDR[2],SDR[3]
+        return MRE,SDR[0], SDR[1], SDR[2], SDR[3]
 
 
 if __name__ == "__main__":
@@ -370,7 +354,7 @@ if __name__ == "__main__":
     random.seed(10)
     # Parse command line options
     parser = argparse.ArgumentParser(description="get the threshold from already trained base model")
-    parser.add_argument("--tag", default='1031_test1_diceOnly_2', help="position of the output dir")
+    parser.add_argument("--tag", default='1030_2_dice_test1', help="position of the output dir")
     parser.add_argument("--debug", default='', help="position of the output dir")
     parser.add_argument("--iteration", default='', help="position of the output dir")
     parser.add_argument("--attack", default='', help="position of the output dir")
@@ -392,25 +376,25 @@ if __name__ == "__main__":
     if args.pretrain == "True":
         subfolder = "pretrain-based-min/"
     else:
-        subfolder = "non_pretrain_dice_loose_PGD/"
+        subfolder = "non_pretrain_dice/"
         
     resultFolder = args.tag
     iteration = 499
     #file folders================
     #folders = ["base","PGD_25_post","PGD_10_post","PGD_40_post","SIMA_40_min","SIMA2_40_min","IMA_40_min_original","IMA_40_min","PGD_IMA"]
     #folders = ["base","PGD_10","IMA_40_loss2Z_700","PGD_20"]
-    folders = ["PGD_1_500","IMA_5_DSH2302Zd10", "PGD_3_500","PGD_5_500"]
+    #folders = ["base_dice0.5","PGD_1","PGD_5","PGD_3","IMA_5_DiceLossTrainMean","IMA_5_DiceLossMeanHard","IMA_5_DiceLossMeanOriginal"]
     #folders = ["base_400_320","PGD_20","PGD_15","PGD_10","PGD_5","IMA_20_3Z_R"]
     #folders = ["base_400_320","PGD_40","PGD_20","PGD_10","PGD_5","IMA_40_3Z_R"]
     #folders = ["base_400_320","PGD_15","PGD_10","PGD_5","IMA_15_3Z"]
-    #folders = ["PGD_5","IMA_40_mean"]
+    folders = ["IMA_5_DSH","PGD_1_500","PGD_3_500","PGD_5_500","base_dice0.5_500"]
     #folders = ["base_400_320"]
     #========================
     import matplotlib.pyplot as plt
     #fig, ax = plt.subplots(3,2, figsize = (10,15))
-    plt.figure(figsize = (10,15))
+    plt.figure(figsize = (10,5))
     cm = plt.get_cmap("gist_rainbow")
-    noises = [0,1,2,3]
+    noises = [0,1,2,3,4,5]
     #noises = [0,5,10,20,40]
     #noises = [0,10,20,40]
     #noises = [0]
@@ -422,9 +406,9 @@ if __name__ == "__main__":
     rows3 = []
     rows4 = []
     rows5 = []
-    for f in folders:
-        print ("exist ",f)
+    for f in folders:        
         assert( exists("./results/"+subfolder+f+"/model_epoch_{}.pth".format(iteration)))
+        print ("exist ",f)
     print ("all files exist, test begins...")
     resultDir = os.path.join("./results/"+subfolder,resultFolder)
     assert(not exists(resultDir))
@@ -432,8 +416,8 @@ if __name__ == "__main__":
     print ("result will be saved to ", resultDir)        
     for i, folder in enumerate(folders):
         MRE_list =list()
+        SDR1_list = list()
         SDR2_list = list()
-        SDR25_list = list()
         SDR3_list = list()
         SDR4_list = list()
         with open(os.path.join("./results/"+subfolder+folder, args.config_file), "r") as f:
@@ -457,21 +441,21 @@ if __name__ == "__main__":
         #net = torch.nn.DataParallel(net)
         net = net.cuda()
         print ("model is loaded",  folder)
-        for noise in noises:
-    
+        
+        for noise in noises: 
             print ("the noise is ", noise)
             #tester = Tester(logger, config, net, args.tag, args.train, args)
-            tester = Tester( get_mylogger(), config, args.testset)
+            tester = Tester( get_mylogger(), config = config, dataset = args.testset)
             #MRE, loss_val, loss_logic,  loss_reg = tester.validate(net, noise = noise)
-            MRE, SDR2, SDR2_5,SDR3, SDR4 = tester.test(net, noise = noise)
+            MRE, SDR1, SDR2, SDR3, SDR4 = tester.test(net, noise = noise)
             #logger.info("Testing MRE {},  loss {}, logic loss {}, reg loss {}".format(MRE, loss_val, loss_logic, loss_reg))
             MRE_list.append(MRE)
+            SDR1_list.append(SDR1)
             SDR2_list.append(SDR2)
-            SDR25_list.append(SDR2_5)
             SDR3_list.append(SDR3)
             SDR4_list.append(SDR4)
             
-        plt.subplot(3,1,1)
+        plt.subplot(1,2,1)
         plt.yscale("log")
         plt.plot(noises,MRE_list, color = cm(1.0*i/len(folders)), label = folder )
         plt.ylabel("log MRE (mm)")
@@ -479,36 +463,45 @@ if __name__ == "__main__":
         plt.legend()    
         rows1.append([folder]+[str(round(i,3)) for i in MRE_list])
         
-        
-        
-        plt.subplot(3,2,3)
-        plt.plot(noises,SDR2_list, color = cm(1.0*i/len(folders)), label = folder )
-        plt.ylabel("SDR 2mm")
+        plt.subplot(1,2,2)
+        #plt.yscale("log")
+        plt.plot(noises,MRE_list, color = cm(1.0*i/len(folders)), label = folder )
+        plt.ylabel("MRE (mm)")
         plt.xlabel("noise (L2)")
-        plt.legend() 
-        rows2.append([folder]+[str(round(i,3)) for i in SDR2_list])
+        plt.legend()    
+        #rows1.append([folder]+[str(round(i,3)) for i in MRE_list])
         
-        plt.subplot(3,2,4)
-        plt.plot(noises,SDR25_list, color = cm(1.0*i/len(folders)), label = folder )
-        plt.ylabel("SDR 2.5mm")
-        plt.xlabel("noise (L2)")
-        plt.legend()
-        rows3.append([folder]+[str(round(i,3)) for i in SDR25_list])
+
+        
+        #plt.subplot(3,2,3)
+        #plt.plot(noises,SDR2_list, color = cm(1.0*i/len(folders)), label = folder )
+        #plt.ylabel("SDR 2mm")
+        #plt.xlabel("noise (L2)")
+        #plt.legend() 
+        rows2.append([folder]+[str(round(i,3)) for i in SDR1_list])
+        
+        #plt.subplot(3,2,4)
+        #plt.plot(noises,SDR25_list, color = cm(1.0*i/len(folders)), label = folder )
+        #plt.ylabel("SDR 2.5mm")
+        #plt.xlabel("noise (L2)")
+        #plt.legend()
+        rows3.append([folder]+[str(round(i,3)) for i in SDR2_list])
         
         
-        plt.subplot(3,2,5)
-        plt.plot(noises,SDR3_list, color = cm(1.0*i/len(folders)), label = folder )
-        plt.ylabel("SDR 3mm")
-        plt.xlabel("noise (L2)")
-        plt.legend()
+        #plt.subplot(3,2,5)
+        #plt.plot(noises,SDR3_list, color = cm(1.0*i/len(folders)), label = folder )
+        #plt.ylabel("SDR 3mm")
+        #plt.xlabel("noise (L2)")
+        #plt.legend()
         rows4.append([folder]+[str(round(i,3)) for i in SDR3_list])
         
-        plt.subplot(3,2,6)
-        plt.plot(noises,SDR4_list, color = cm(1.0*i/len(folders)), label = folder )
-        plt.ylabel("SDR 4mm")
-        plt.xlabel("noise (L2)")
-        plt.legend()
+        #plt.subplot(1,2,2)
+        #plt.plot(noises,SDR4_list, color = cm(1.0*i/len(folders)), label = folder )
+        #plt.ylabel("SDR 4mm")
+        #plt.xlabel("noise (L2)")
+        #plt.legend()
         rows5.append([folder]+[str(round(i,3)) for i in SDR4_list])
+
         
         
     plt.savefig(os.path.join(resultDir,"result.pdf"),bbox_inches='tight')

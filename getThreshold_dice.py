@@ -17,6 +17,7 @@ from eval import Evaluater
 from utils import to_Image, voting, visualize, make_dir
 from attack import FGSMAttack
 from statsmodels.robust.scale import huber
+from metric import l1_matric_dice
 
 
 def L1Loss(pred, gt, mask=None):
@@ -27,6 +28,7 @@ def L1Loss(pred, gt, mask=None):
         distence = distence * mask
     return distence.sum() / mask.sum()
     # return distence.mean()
+    
 def myL1Loss(pred, gt, mask=None,reduction = "mean"):
     # L1 Loss for offset map
     assert(pred.shape == gt.shape)
@@ -90,52 +92,39 @@ class Tester(object):
                 loss_regression_fn = myL1Loss
                 # the loss for heatmap
                 #BCE loss
-                loss_logic_fn = BCELoss(reduction = 'none')
-                bce= loss_logic_fn(heatmap, guassian_mask)
-                bce = bce.view(bce.size(0),-1).mean(1)
-                # r rario
-                #logic_loss = loss_logic_fn(heatmap, guassian_mask, mask, reduction = "none")
-                guassian_mask=guassian_mask/torch.norm(guassian_mask, p=2,dim = (2,3), keepdim=True)
-                heatmap=heatmap/torch.norm(heatmap, p=2,dim = (2,3), keepdim=True)
-                r=(heatmap*guassian_mask).sum(dim=(2,3))
-                r=r.mean(dim = 1)
-                # the loss for offset
-                regression_loss_ys = loss_regression_fn(regression_y, offset_y, mask, reduction = "none")
-                regression_loss_xs = loss_regression_fn(regression_x, offset_x, mask, reduction = "none")
+                de,regression_loss_ys,regression_loss_xs = l1_matric_dice(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
+
+
                
-                loss = bce*2+regression_loss_ys+regression_loss_xs
+                loss = de*0.5+regression_loss_ys+regression_loss_xs
 
                 # acc them
-                r_list.append(r.cpu().numpy())
-                bce_list.append(bce.cpu().numpy())
+                bce_list.append(de.cpu().numpy())
                 ry_list.append(regression_loss_ys.cpu().numpy())
                 rx_list.append(regression_loss_xs.cpu().numpy())
                 loss_list.append(loss.cpu().numpy())
 
-        rList = np.concatenate(r_list)
+
         ryList = np.concatenate(ry_list)
         rxList = np.concatenate(rx_list)
-        bceList = np.concatenate(bce_list)
+        deList = np.concatenate(bce_list)
         lossList = np.concatenate(loss_list)
          
         import matplotlib.pyplot as plt
         cols = ['b','g','r','y','k','m','c']
-        fig, ax = plt.subplots(1,5, figsize=(25,5))
-        ax[0].hist(rList,  bins=20, color=cols[0], label="distribution of ratio")
-        ax[1].hist(ryList,bins=20, color=cols[1], label="distribution of offset y error")
-        ax[2].hist(rxList,bins=20, color=cols[2], label="distribution of offset x error")
-        ax[3].hist(lossList,bins=20, color=cols[3], label="distribution of total loss")
-        ax[4].hist(bceList,bins = 20,color = cols[4],label = "BCE")
+        fig, ax = plt.subplots(1,4, figsize=(20,5))
+        ax[0].hist(ryList,bins=20, color=cols[1], label="distribution of offset y error")
+        ax[1].hist(rxList,bins=20, color=cols[2], label="distribution of offset x error")
+        ax[2].hist(lossList,bins=20, color=cols[3], label="distribution of dice total loss")
+        ax[3].hist(deList,bins = 20,color = cols[4],label = "DE")
+
         ax[0].legend()
-        ax[1].legend()
-        ax[2].legend() 
+        ax[1].legend() 
+        ax[2].legend()
         ax[3].legend()
-        ax[4].legend()
-        fig.savefig("./"+folder+"_distribution_of_val_data.png")
-        
-        zscore = 3
-        
-        return estimateMean(rList,zscore), estimateMean(ryList,-zscore), estimateMean(rxList,-zscore), estimateMean(lossList,-zscore),estimateMean(bceList,-zscore)       
+        fig.savefig("./"+folder+"_distribution_of_val_data_dice.png")
+        zscore = 2
+        return estimateMean(ryList,-zscore), estimateMean(rxList,-zscore), estimateMean(lossList,-zscore),estimateMean(deList,-zscore)       
 
 def estimateMean(l,z):
     mean,std = np.mean(l),np.std(l)
@@ -145,7 +134,9 @@ if __name__ == "__main__":
     random.seed(10)
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
     os.environ["CUDA_VISIBLE_DEVICES"]="0"
-    folder = "base"
+    #folder = "base_dice0.5_500"
+    folder = "base_dice0.5"
+    #folder = "base"
     #folder = "non-pretrain-min/PGD_10"
     # Parse command line options
     parser = argparse.ArgumentParser(description="get the threshold from already trained base model")
@@ -192,8 +183,8 @@ if __name__ == "__main__":
     net = torch.nn.DataParallel(net)
     #tester = Tester(logger, config, net, args.tag, args.train, args)
     tester = Tester(logger, config, tag=args.tag)
-    t1, t2, t3, t4, t5 = tester.getThresholds(net, folder)
-    logger.info("the threshold 1 is {}, threshold 2 ry is {}, threshold 3 rx is {}, threshold 4 loss is {}, threshold 5 is {}".format(t1, t2, t3, t4, t5))
+    t1, t2, t3, t4 = tester.getThresholds(net, folder)
+    logger.info("the threshold 1 is {}, threshold 2  is {}, threshold 3 is {}, threshold 4 loss is {}".format(t1, t2, t3, t4))
     # go through all the training set to get the thresholds, three
     
     

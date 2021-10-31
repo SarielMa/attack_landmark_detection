@@ -21,6 +21,20 @@ from myTest import Tester
 import matplotlib.pyplot as plt
 import numpy as np
 
+def cal_dice(Mp, M, reduction='none'):
+    #Mp.shape  NxKx128x128
+    intersection = (Mp*M).sum(dim=(2,3))
+    dice = (2*intersection) / (Mp.sum(dim=(2,3)) + M.sum(dim=(2,3)))
+    if reduction == 'mean':
+        dice = dice.mean()
+    elif reduction == 'sum':
+        dice = dice.sum()
+    return dice
+
+def dice_loss(Mp, M, reduction='none'):
+    score=cal_dice(Mp, M, reduction)
+    return 1-score
+    
 def L1Loss(pred, gt, mask=None):
     # L1 Loss for offset map
     assert(pred.shape == gt.shape)
@@ -42,7 +56,7 @@ if __name__ == "__main__":
     #device = torch.device('cuda:1')
     # Parse command line options
     parser = argparse.ArgumentParser(description="Train Unet landmark detection network")
-    parser.add_argument("--tag", default='train', help="name of the run")
+    parser.add_argument("--tag", default='base', help="name of the run")
     parser.add_argument("--config_file", default="config.yaml", help="default configs")
     args = parser.parse_args()
  
@@ -98,7 +112,9 @@ if __name__ == "__main__":
                 offset_y.cuda(), offset_x.cuda(), guassian_mask.cuda()
             heatmap, regression_y, regression_x = net(img)
             
-            logic_loss = loss_logic_fn(heatmap, guassian_mask)
+            logic_loss = loss_logic_fn(heatmap, guassian_mask) # find min size
+            #logic_loss = dice_loss(heatmap, mask)
+            
             regression_loss_y = loss_regression_fn(regression_y, offset_y, mask)
             regression_loss_x = loss_regression_fn(regression_x, offset_x, mask)
 

@@ -18,6 +18,7 @@ from utils import to_Image, voting, visualize, make_dir
 from attack import FGSMAttack
 from torch import optim
 from os.path import exists
+import matplotlib.pyplot as plt
 
 def cal_dice(Mp, M, reduction='none'):
     #Mp.shape  NxKx128x128
@@ -148,38 +149,84 @@ def L1Loss(pred, gt, mask=None,reduction = "mean"):
         # return distence.mean()
     else:
         return distence.sum([1,2,3])/mask.sum([1,2,3])
+
+def total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, lamb=2, reduction = 'sum'):
+    # loss
+    if reduction == 'sum':
+        loss_logic_fn = BCELoss()
+        loss_regression_fn = L1Loss
+        # the loss for heatmap
+        logic_loss = loss_logic_fn(heatmap, guassian_mask)
+        # the loss for offset
+        regression_loss_y = loss_regression_fn(regression_y, offset_y, mask, reduction = "mean")
+        regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "mean")
+        return  regression_loss_x + regression_loss_y + logic_loss * lamb, regression_loss_x + regression_loss_y
+    else: 
+        # every sample has its loss, none reduction
+        loss_logic_fn = BCELoss(reduction = reduction)
+        loss_regression_fn = L1Loss
+        # the loss for heatmap
+        logic_loss = loss_logic_fn(heatmap, guassian_mask)
+        logic_loss = logic_loss.view(logic_loss.size(0),-1).mean(1)
+        # the loss for offset
+        regression_loss_y = loss_regression_fn(regression_y, offset_y, mask, reduction = "none")
+        regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "none")
+        return  regression_loss_x + regression_loss_y + logic_loss * lamb, regression_loss_x + regression_loss_y
+
+
+def heatmap_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, lamb=2, reduction = 'sum'):
+    # loss
+    if reduction == 'sum':
+        loss_logic_fn = BCELoss()
+        loss_regression_fn = L1Loss
+        # the loss for heatmap
+        logic_loss = loss_logic_fn(heatmap, guassian_mask)
+        # the loss for offset
+        regression_loss_y = loss_regression_fn(regression_y, offset_y, mask, reduction = "mean")
+        regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "mean")
+        return  logic_loss, regression_loss_x + regression_loss_y
+    else: 
+        # every sample has its loss, none reduction
+        loss_logic_fn = BCELoss(reduction = reduction)
+        loss_regression_fn = L1Loss
+        # the loss for heatmap
+        logic_loss = loss_logic_fn(heatmap, guassian_mask)
+        logic_loss = logic_loss.view(logic_loss.size(0),-1).mean(1)
+        # the loss for offset
+        regression_loss_y = loss_regression_fn(regression_y, offset_y, mask, reduction = "none")
+        regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "none")
+        return  logic_loss, regression_loss_x + regression_loss_y
     
-def heatmap_dice_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
+def heatmap_dice_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, lamb=2, reduction = 'sum'):
+    # loss
+    if reduction == 'sum':
         
-    logic_loss = dice_loss(heatmap, mask, reduction='mean')
-    return  logic_loss
-
+        loss_regression_fn = L1Loss
+        # the loss for heatmap
+        logic_loss = dice_loss(heatmap, mask, reduction='mean')
+        # the loss for offset
+        regression_loss_y = loss_regression_fn(regression_y, offset_y, mask, reduction = "mean")
+        regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "mean")
+        return  logic_loss, regression_loss_x + regression_loss_y
+    else: 
+        # every sample has its loss, none reduction
+      
+        loss_regression_fn = L1Loss
+        # the loss for heatmap
+        logic_loss = dice_loss(heatmap, mask, reduction=reduction)
+        logic_loss = logic_loss.view(logic_loss.size(0),-1).mean(1)
+        # the loss for offset
+        regression_loss_y = loss_regression_fn(regression_y, offset_y, mask, reduction = "none")
+        regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "none")
+        return  logic_loss, regression_loss_x + regression_loss_y
     
-def reg_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
-
-    loss_regression_fn = L1Loss
-    regression_loss_y = loss_regression_fn(regression_y, offset_y, mask, reduction = "mean")
-    regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "mean")
-    return  regression_loss_x + regression_loss_y
-    
-
-def total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):       
-    loss_regression_fn = L1Loss
-    logic_loss = dice_loss(heatmap, mask, reduction='mean')
-    regression_loss_y = loss_regression_fn(regression_y, offset_y, mask, reduction = "mean")
-    regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "mean")
-    return  logic_loss*0.5 + regression_loss_x + regression_loss_y
-
-
-
+pgd_loss = heatmap_dice_loss
 
 #%%
 def pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, noise_norm, norm_type, max_iter, step,
                rand_init=True, rand_init_norm=None, targeted=False,
-               clip_X_min=-1, clip_X_max=1, use_optimizer=False, loss_fn=None):
+               clip_X_min=-1, clip_X_max=1, use_optimizer=False):
     #-----------------------------------------------------
-    if loss_fn is None :
-        raise ValueError('loss_fn is unkown')
     #-----------------
     img = img.detach()
     #-----------------
@@ -200,7 +247,7 @@ def pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, noise_norm, no
         Xn = Xn.detach()
         Xn.requires_grad = True
         heatmap, regression_y, regression_x = net(Xn)
-        loss= loss_fn(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
+        loss,_  = pgd_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
         #---------------------------
         if targeted == True:
             loss=-loss
@@ -224,16 +271,14 @@ def pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, noise_norm, no
     return Xn
 
 class Tester(object):
-    def __init__(self,logger, config, testset):
+    def __init__(self,logger, config):
         self.datapath = config['dataset_pth']        
-        self.nWorkers = config['num_workers']    
+        self.nWorkers = 0    
         self.logger = logger
-        self.dataset_val = Cephalometric(self.datapath, testset)
-        self.dataloader_val = DataLoader(self.dataset_val, batch_size=1, shuffle=False, num_workers=self.nWorkers)
-
-
-    def validate(self, net, loss_fn, noise=0, norm_type = 2, max_iter = 100):
-     
+        self.dataset_val = Cephalometric(self.datapath, "Test1")
+        self.dataloader_val = DataLoader(self.dataset_val, batch_size=16, shuffle=False, num_workers=self.nWorkers)
+        
+    def testSingle(self, net, noise=0, norm_type = 2, max_iter = 100):       
         distance_list = dict()
         mean_list = dict()
         for i in range(19):
@@ -246,36 +291,55 @@ class Tester(object):
         train_loss_list = list()
         regression_loss_list = list()   
         logic_loss_list = list()
-
-        dataloader_val = self.dataloader_val
-        dataset_val = self.dataset_val
+        dataset_val = Cephalometric(self.datapath, "ValSingle")
+        dataloader_val = DataLoader(dataset_val, batch_size=1, shuffle=False, num_workers=self.nWorkers)
         evaluater = Evaluater(self.logger, dataset_val.size, dataset_val.original_size)
         Radius = dataset_val.Radius
-        #net.eval()
-        for img, mask, guassian_mask, offset_y, offset_x, landmark_list in tqdm(dataloader_val):
+        net.eval()
+
+
+        for img, mask, guassian_mask, offset_y, offset_x, landmark_list in dataloader_val:
             img, mask, offset_y, offset_x, guassian_mask = img.cuda(), mask.cuda(), \
                 offset_y.cuda(), offset_x.cuda(), guassian_mask.cuda()
+
             
             if noise > 0:
                 step = 5*noise/max_iter
-                img = pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, noise, norm_type, max_iter, step, \
-                                  loss_fn = loss_fn)
+                imgn = pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, noise, norm_type, max_iter, step)
+            else:
+                imgn = img
+                
+            
             with torch.no_grad():    
-                heatmap, regression_y, regression_x = net(img)               
-                pred_landmark = voting(heatmap, regression_y, regression_x, Radius)   
-                evaluater.record(pred_landmark, landmark_list)    
-        MRE, _ = evaluater.my_cal_metrics()
-
-        return MRE
+                heatmap, regression_y, regression_x = net(imgn)
+                # Vote for the final accurate point
+                pred_landmark = voting(heatmap, regression_y, regression_x, Radius)
+                
+                print ("one")
+                
+                
+                temp = imgn[0].cpu().permute((1,2,0))
+                temp = (temp+1)/2
+                #temp *= 255
+                ymax = temp.size(0)
+                xmax = temp.size(1)
+                for y,x in zip(*pred_landmark):
+                    temp[ max(0,y-2):min(y+2,ymax), max(0,x-2):min(xmax,x+2), 1:2] = 1.0
+                    temp[max(0,y-2):min(y+2,ymax), max(0,x-2):min(xmax,x+2), 0] = 0.0
+                plt.imshow(temp)
+                plt.savefig("200X160_sample/noise{}.png".format(noise))
+ 
+  
+    
+   
 
 
 if __name__ == "__main__":
+    #import random
     random.seed(10)
-    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
-    os.environ["CUDA_VISIBLE_DEVICES"]="1"
     # Parse command line options
     parser = argparse.ArgumentParser(description="get the threshold from already trained base model")
-    parser.add_argument("--tag", default='1031_Test1', help="position of the output dir")
+    parser.add_argument("--tag", default='try1', help="position of the output dir")
     parser.add_argument("--debug", default='', help="position of the output dir")
     parser.add_argument("--iteration", default='', help="position of the output dir")
     parser.add_argument("--attack", default='', help="position of the output dir")
@@ -285,86 +349,84 @@ if __name__ == "__main__":
     parser.add_argument("--train", default="", help="default configs")
     parser.add_argument("--rand", default="", help="default configs")
     parser.add_argument("--epsilon", default="8", help="default configs")
-    parser.add_argument("--testset", default="Test1")
+    parser.add_argument("--cuda", default="0", help="default configs")
+    parser.add_argument("--pretrain", default="False", help="default configs")
     args = parser.parse_args()
-
-    iteration = 499
     
+    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
+    os.environ["CUDA_VISIBLE_DEVICES"]=args.cuda
+    subfolder = ""
     
-    #file folders================
-    folders = ["PGD_1_500","IMA_5_DSH2302Zd10", "PGD_3_500","PGD_5_500"]
-    subfolder = "non_pretrain_dice_loose_PGD/"
+    if args.pretrain == "True":
+        subfolder = "pretrain-based-min/"
+    else:
+        subfolder = "non_pretrain_dice/"
+        
     resultFolder = args.tag
+    iteration = 229
+    #file folders================
+    #folders = ["base","PGD_25_post","PGD_10_post","PGD_40_post","SIMA_40_min","SIMA2_40_min","IMA_40_min_original","IMA_40_min","PGD_IMA"]
+    #folders = ["base","PGD_10","IMA_40_loss2Z_700","PGD_20"]
+    folders = ["base_dice0.5"]
+    #folders = ["base_400_320","PGD_20","PGD_15","PGD_10","PGD_5","IMA_20_3Z_R"]
+    #folders = ["base_400_320","PGD_40","PGD_20","PGD_10","PGD_5","IMA_40_3Z_R"]
+    #folders = ["base_400_320","PGD_15","PGD_10","PGD_5","IMA_15_3Z"]
+    #folders = ["PGD_5","IMA_40_mean"]
+    #folders = ["base_400_320"]
     #========================
     import matplotlib.pyplot as plt
-    #plt.figure(figsize = (5,5))
+    #fig, ax = plt.subplots(3,2, figsize = (10,15))
+    plt.figure(figsize = (10,15))
     cm = plt.get_cmap("gist_rainbow")
-    noises = [0,1,2,3]
-    #attacks=================================================================
-    losses = [heatmap_dice_loss, reg_loss, total_loss]
-    attackNames = ["DiceOnly", "RegOnly","TotalLoss"]
-    # check if folders and pts exist=========================================
-    for f in folders:
-        print ("exist ",f)
-        assert( exists("./results/"+subfolder+f+"/model_epoch_{}.pth".format(iteration)))
-    print ("all files exist, test begins...")
-    resultDir = os.path.join("./results/"+subfolder,resultFolder)
-    assert(not exists(resultDir))
-    os.mkdir(resultDir)
-    # test starts
-    for n, loss_fn in enumerate(losses):
-        attackName = attackNames[n]
-        rows1 = []
-        plt.ylabel("log MRE (mm)")
-        plt.xlabel("noise (L2)")
-        plt.title(attackName)
-        plt.yscale("log")
-        plt.legend()
-        for i, folder in enumerate(folders):
-            MRE_list =list()
-            
-            with open(os.path.join("./results/"+subfolder+folder, args.config_file), "r") as f:
-                config = yaml.load(f, Loader=yamlloader.ordereddict.CLoader)     
-            # Create Logger
-            logger = get_mylogger()
-            # Load model
-            net = UNet_Pretrained(3, config['num_landmarks']).cuda()   
-            print("=======================================================================================")
-            print("Loading checkpoints from epoch {}".format(iteration))
-            checkpoints = torch.load("./results/"+subfolder+folder+"/model_epoch_{}.pth".format(iteration))
-            newCP = dict()
-            #adjust the keys(remove the "module.")
-            for k in checkpoints.keys():
-                newK = ""
-                if "module." in k:
-                    newK = ".".join(k.split(".")[1:])
-                else:
-                    newK = k
-                newCP[newK] = checkpoints[k]
-            # test
-            net.load_state_dict(newCP)
-            
-            for noise in noises:
-                #net = torch.nn.DataParallel(net)
-                #tester = Tester(logger, config, net, args.tag, args.train, args)
-                print ("this noise level is {}++++++++++++++++++++++++++++++++++++++++++++++++++++++++++".format(noise))
-                tester = Tester(logger, config, testset = args.testset)
-                MRE= tester.validate(net, noise = noise, loss_fn = loss_fn)
-                print("Testing MRE {}".format(MRE))
-                MRE_list.append(MRE)
-                
-            plt.plot(noises,MRE_list, color = cm(1.0*i/len(folders)), label = folder )               
-            rows1.append([folder]+[str(round(i,3)) for i in MRE_list])
-            
-        plt.savefig(os.path.join(resultDir,attackName+"result.pdf"),bbox_inches='tight')
+    noises = [0,1,2,3,4,5,6,7,8,9,10,20,40]
+    #noises = [0,5,10,20,40]
+    #noises = [0,10,20,40]
+    #noises = [0]
+    
+    #noises = [0]
+    #cols = ['b','g','r','y','k','m','c']
+    rows1 = []
+    rows2 = []
+    rows3 = []
+    rows4 = []
+    rows5 = []
+       
+    for i, folder in enumerate(folders):
+        MRE_list =list()
+        SDR2_list = list()
+        SDR25_list = list()
+        SDR3_list = list()
+        SDR4_list = list()
+        with open(os.path.join("./results/"+subfolder+folder, args.config_file), "r") as f:
+            config = yaml.load(f, Loader=yamlloader.ordereddict.CLoader) 
+        # Load model
+        net = UNet_Pretrained(3, config['num_landmarks']).cuda()   
+        print("Loading checkpoints from {} epoch {}".format(folder,iteration))
+        checkpoints = torch.load("./results/"+subfolder+folder+"/model_epoch_{}.pth".format(iteration))
+        newCP = dict()
+        #adjust the keys(remove the "module.")
+        for k in checkpoints.keys():
+            newK = ""
+            if "module." in k:
+                newK = ".".join(k.split(".")[1:])
+            else:
+                newK = k
+            newCP[newK] = checkpoints[k]
+        
+        # test
+        net.load_state_dict(newCP)
+        #net = torch.nn.DataParallel(net)
+        net = net.cuda()
+        print ("model is loaded",  folder)
+        for noise in noises:   
+            print ("the noise is ", noise)
+            #tester = Tester(logger, config, net, args.tag, args.train, args)
+            tester = Tester( get_mylogger(), config)
+            #MRE, loss_val, loss_logic,  loss_reg = tester.validate(net, noise = noise)
+            tester.testSingle(net, noise = noise)
+            #logger.info("Testing MRE {},  loss {}, logic loss {}, reg loss {}".format(MRE, loss_val, loss_logic, loss_reg))
 
-        fields1 = ["noise"]+[str(i) for i in noises]
-        with open(os.path.join(resultDir,attackName+"result_MRE.csv"),'w') as csvfile:
-            csvwriter = csv.writer(csvfile)
-            csvwriter.writerow(fields1)
-            csvwriter.writerows(rows1) 
-        
-        
+
         
         
     
