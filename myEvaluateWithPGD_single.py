@@ -149,8 +149,7 @@ def L1Loss(pred, gt, mask=None,reduction = "mean"):
     else:
         return distence.sum([1,2,3])/mask.sum([1,2,3])
     
-def heatmap_dice_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):
-        
+def heatmap_dice_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask):        
     logic_loss = dice_loss(heatmap, mask, reduction='mean')
     return  logic_loss
 
@@ -234,11 +233,6 @@ class Tester(object):
 
     def validate(self, net, loss_fn, noise=0, norm_type = 2, max_iter = 100):
      
-        distance_list = dict()
-        mean_list = dict()
-        for i in range(19):
-            distance_list[i] = list()
-            mean_list[i] = list()
 
         loss_logic_fn = BCELoss()
         loss_regression_fn = L1Loss
@@ -271,11 +265,10 @@ class Tester(object):
 
 if __name__ == "__main__":
     random.seed(10)
-    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
-    os.environ["CUDA_VISIBLE_DEVICES"]="1"
+
     # Parse command line options
     parser = argparse.ArgumentParser(description="get the threshold from already trained base model")
-    parser.add_argument("--tag", default='1031_Test1', help="position of the output dir")
+    parser.add_argument("--tag", default='1101_Test1', help="position of the output dir")
     parser.add_argument("--debug", default='', help="position of the output dir")
     parser.add_argument("--iteration", default='', help="position of the output dir")
     parser.add_argument("--attack", default='', help="position of the output dir")
@@ -286,20 +279,25 @@ if __name__ == "__main__":
     parser.add_argument("--rand", default="", help="default configs")
     parser.add_argument("--epsilon", default="8", help="default configs")
     parser.add_argument("--testset", default="Test1")
+    parser.add_argument("--cuda", default="0")
     args = parser.parse_args()
-
+    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
+    os.environ["CUDA_VISIBLE_DEVICES"]=args.cuda
     iteration = 499
     
     
     #file folders================
-    folders = ["PGD_1_500","IMA_5_DSH2302Zd10", "PGD_3_500","PGD_5_500"]
-    subfolder = "non_pretrain_dice_loose_PGD/"
+    #folders = ["IMA_5_DSH2302Zd50","IMA_5_DSH2302Zd20","IMA_5_DSH2302Zd10","PGD_1_500", "PGD_3_500","PGD_5_500"]
+    folders = ["PGD_2_500","IMA_5_DSH500Maxd5","IMA_5_DSH2302Zd50_1000","PGD_1_500", "PGD_3_500"]
+    #folders = ["PGD_1_500"]
+    #subfolder = "non_pretrain_dice_loose_PGD/"
+    subfolder = "non_pretrain_dice_strict_PGD/"
     resultFolder = args.tag
     #========================
     import matplotlib.pyplot as plt
     #plt.figure(figsize = (5,5))
     cm = plt.get_cmap("gist_rainbow")
-    noises = [0,1,2,3]
+    noises = [0,0.5,1,1.5,2,2.5,3]
     #attacks=================================================================
     losses = [heatmap_dice_loss, reg_loss, total_loss]
     attackNames = ["DiceOnly", "RegOnly","TotalLoss"]
@@ -315,11 +313,8 @@ if __name__ == "__main__":
     for n, loss_fn in enumerate(losses):
         attackName = attackNames[n]
         rows1 = []
-        plt.ylabel("log MRE (mm)")
-        plt.xlabel("noise (L2)")
-        plt.title(attackName)
-        plt.yscale("log")
-        plt.legend()
+        plt.figure(figsize = (5,5))
+
         for i, folder in enumerate(folders):
             MRE_list =list()
             
@@ -330,6 +325,7 @@ if __name__ == "__main__":
             # Load model
             net = UNet_Pretrained(3, config['num_landmarks']).cuda()   
             print("=======================================================================================")
+            print ("the model is {}".format(folder))
             print("Loading checkpoints from epoch {}".format(iteration))
             checkpoints = torch.load("./results/"+subfolder+folder+"/model_epoch_{}.pth".format(iteration))
             newCP = dict()
@@ -343,7 +339,7 @@ if __name__ == "__main__":
                 newCP[newK] = checkpoints[k]
             # test
             net.load_state_dict(newCP)
-            
+            net = torch.nn.DataParallel(net)
             for noise in noises:
                 #net = torch.nn.DataParallel(net)
                 #tester = Tester(logger, config, net, args.tag, args.train, args)
@@ -352,8 +348,13 @@ if __name__ == "__main__":
                 MRE= tester.validate(net, noise = noise, loss_fn = loss_fn)
                 print("Testing MRE {}".format(MRE))
                 MRE_list.append(MRE)
-                
-            plt.plot(noises,MRE_list, color = cm(1.0*i/len(folders)), label = folder )               
+
+            plt.yscale("log")                           
+            plt.plot(noises,MRE_list, color = cm(1.0*i/len(folders)), label = folder )                                     
+            plt.ylabel("log MRE (mm)")
+            plt.xlabel("noise (L2)")
+            plt.title(attackName)
+            plt.legend()
             rows1.append([folder]+[str(round(i,3)) for i in MRE_list])
             
         plt.savefig(os.path.join(resultDir,attackName+"result.pdf"),bbox_inches='tight')

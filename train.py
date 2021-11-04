@@ -51,14 +51,18 @@ def focal_loss(pred, gt):
 
 if __name__ == "__main__":
     #CUDA_VISIBLE_DEVICES=0
-    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
-    os.environ["CUDA_VISIBLE_DEVICES"]="1"
+
     #device = torch.device('cuda:1')
     # Parse command line options
     parser = argparse.ArgumentParser(description="Train Unet landmark detection network")
     parser.add_argument("--tag", default='base', help="name of the run")
     parser.add_argument("--config_file", default="config.yaml", help="default configs")
+    parser.add_argument("--iterations", default = "500")
+    parser.add_argument("--cuda", default = "0")
     args = parser.parse_args()
+    
+    os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
+    os.environ["CUDA_VISIBLE_DEVICES"]=args.cuda
  
     # Load yaml config file
     with open(args.config_file) as f:
@@ -102,8 +106,8 @@ if __name__ == "__main__":
     loss_train_list = list()
     loss_val_list = list()
     MRE_list = list()
-    
-    for epoch in range(config['num_epochs']):
+    iterations = int(args.iterations)
+    for epoch in range(iterations):
         logic_loss_list = list()
         regression_loss_list = list()
         net.train()

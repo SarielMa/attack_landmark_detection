@@ -207,17 +207,6 @@ def heatmap_dice_loss(heatmap, guassian_mask, regression_y, offset_y, regression
         regression_loss_y = loss_regression_fn(regression_y, offset_y, mask, reduction = "mean")
         regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "mean")
         return  logic_loss, regression_loss_x + regression_loss_y
-    else: 
-        # every sample has its loss, none reduction
-      
-        loss_regression_fn = L1Loss
-        # the loss for heatmap
-        logic_loss = dice_loss(heatmap, mask, reduction=reduction)
-        logic_loss = logic_loss.view(logic_loss.size(0),-1).mean(1)
-        # the loss for offset
-        regression_loss_y = loss_regression_fn(regression_y, offset_y, mask, reduction = "none")
-        regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "none")
-        return  logic_loss, regression_loss_x + regression_loss_y
 
 def reg_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, lamb=2, reduction = 'sum'):
     # loss
@@ -241,7 +230,7 @@ def total_loss(heatmap, guassian_mask, regression_y, offset_y, regression_x, off
         # the loss for offset
         regression_loss_y = loss_regression_fn(regression_y, offset_y, mask, reduction = "mean")
         regression_loss_x = loss_regression_fn(regression_x, offset_x, mask, reduction = "mean")
-        return  logic_loss + regression_loss_x + regression_loss_y,logic_loss
+        return  logic_loss*0.5 + regression_loss_x + regression_loss_y,logic_loss
 
     
 pgd_loss = heatmap_dice_loss
@@ -336,6 +325,7 @@ class Tester(object):
             if noise > 0:
                 step = 5*noise/max_iter
                 img = pgd_attack(net, img, mask, offset_y, offset_x, guassian_mask, noise, norm_type, max_iter, step)
+                #attack a batch, there may be a bit difference from that with single attack
                     
             for i in range(img.size(0)):
                 l1.append(img[i].view(1,img.size(1),img.size(2),img.size(3)))
@@ -370,7 +360,7 @@ if __name__ == "__main__":
     random.seed(10)
     # Parse command line options
     parser = argparse.ArgumentParser(description="get the threshold from already trained base model")
-    parser.add_argument("--tag", default='1031_test1_diceOnly_2', help="position of the output dir")
+    parser.add_argument("--tag", default='1101_test1_diceOnly_2', help="position of the output dir")
     parser.add_argument("--debug", default='', help="position of the output dir")
     parser.add_argument("--iteration", default='', help="position of the output dir")
     parser.add_argument("--attack", default='', help="position of the output dir")
@@ -380,7 +370,7 @@ if __name__ == "__main__":
     parser.add_argument("--train", default="", help="default configs")
     parser.add_argument("--rand", default="", help="default configs")
     parser.add_argument("--epsilon", default="8", help="default configs")
-    parser.add_argument("--cuda", default="1", help="default configs")
+    parser.add_argument("--cuda", default="0", help="default configs")
     parser.add_argument("--pretrain", default="False", help="default configs")
     parser.add_argument("--testset", default="Test1")
     args = parser.parse_args()
@@ -392,14 +382,14 @@ if __name__ == "__main__":
     if args.pretrain == "True":
         subfolder = "pretrain-based-min/"
     else:
-        subfolder = "non_pretrain_dice_loose_PGD/"
+        subfolder = "non_pretrain_dice_strict_PGD/"
         
     resultFolder = args.tag
     iteration = 499
     #file folders================
     #folders = ["base","PGD_25_post","PGD_10_post","PGD_40_post","SIMA_40_min","SIMA2_40_min","IMA_40_min_original","IMA_40_min","PGD_IMA"]
     #folders = ["base","PGD_10","IMA_40_loss2Z_700","PGD_20"]
-    folders = ["PGD_1_500","IMA_5_DSH2302Zd10", "PGD_3_500","PGD_5_500"]
+    folders = ["PGD_2_500","IMA_5_DSH500Maxd5","IMA_5_DSH2302Zd50_1000","PGD_1_500", "PGD_3_500"]
     #folders = ["base_400_320","PGD_20","PGD_15","PGD_10","PGD_5","IMA_20_3Z_R"]
     #folders = ["base_400_320","PGD_40","PGD_20","PGD_10","PGD_5","IMA_40_3Z_R"]
     #folders = ["base_400_320","PGD_15","PGD_10","PGD_5","IMA_15_3Z"]
@@ -410,7 +400,7 @@ if __name__ == "__main__":
     #fig, ax = plt.subplots(3,2, figsize = (10,15))
     plt.figure(figsize = (10,15))
     cm = plt.get_cmap("gist_rainbow")
-    noises = [0,1,2,3]
+    noises = [0,0.5,1,1.5,2,2.5,3]
     #noises = [0,5,10,20,40]
     #noises = [0,10,20,40]
     #noises = [0]

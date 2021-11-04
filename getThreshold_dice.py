@@ -80,7 +80,7 @@ class Tester(object):
         bce_list = list()
         
         
-        dataset_train = Cephalometric(self.datapath, "Val")
+        dataset_train = Cephalometric(self.datapath, "Train")
         dataloader_train = DataLoader(dataset_train, batch_size=1, shuffle=False, num_workers=self.nWorkers)
         
         for img, mask, guassian_mask, offset_y, offset_x, landmark_list in tqdm(dataloader_train):
@@ -123,7 +123,7 @@ class Tester(object):
         ax[2].legend()
         ax[3].legend()
         fig.savefig("./"+folder+"_distribution_of_val_data_dice.png")
-        zscore = 2
+        zscore = 3
         return estimateMean(ryList,-zscore), estimateMean(rxList,-zscore), estimateMean(lossList,-zscore),estimateMean(deList,-zscore)       
 
 def estimateMean(l,z):
@@ -134,8 +134,8 @@ if __name__ == "__main__":
     random.seed(10)
     os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
     os.environ["CUDA_VISIBLE_DEVICES"]="0"
-    #folder = "base_dice0.5_500"
-    folder = "base_dice0.5"
+    folder = "base_dice0.5_500"
+    #folder = "base_dice0.5"
     #folder = "base"
     #folder = "non-pretrain-min/PGD_10"
     # Parse command line options
@@ -159,7 +159,7 @@ if __name__ == "__main__":
     logger = get_mylogger()
         
 
-    iteration = 229
+    iteration = 499
     
     # Load model
     # net = UNet(3, config['num_landmarks']).cuda()
