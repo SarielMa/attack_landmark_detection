@@ -54,9 +54,9 @@ class Cephalometric(data.Dataset):
             start = 151
             end = 200
         elif mode == 'ValSingle':
-            self.pth_Image = os.path.join(self.pth_Image, 'Test2Data')
-            start = 301
-            end = 301
+            self.pth_Image = os.path.join(self.pth_Image, 'Test1Data')
+            start = 151
+            end = 151
         elif mode == 'Test1':
             self.pth_Image = os.path.join(self.pth_Image, 'Test1Data')
             start = 201

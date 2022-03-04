@@ -222,8 +222,8 @@ if __name__ == "__main__":
             loss_list.append(loss)
          #--------------------update the margins
             Yp_e_Y=classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask)
-            flag1[idx[advc==0]]=1
-            flag2[idx[Yp_e_Y]]=1
+            flag1[idx[advc==0]]=1 # can be correctly classified under noise
+            flag2[idx[Yp_e_Y]]=1 # can be correctly classsified without noise
             #flag2[idx]=1
             if idx_n.shape[0]>0:
                 temp=torch.norm((Xn-img[idx_n]).view(Xn.shape[0], -1), p=norm_type, dim=1).cpu()

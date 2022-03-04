@@ -323,11 +323,15 @@ class Tester(object):
                 #temp *= 255
                 ymax = temp.size(0)
                 xmax = temp.size(1)
+                """
                 for y,x in zip(*pred_landmark):
                     temp[ max(0,y-2):min(y+2,ymax), max(0,x-2):min(xmax,x+2), 1:2] = 1.0
                     temp[max(0,y-2):min(y+2,ymax), max(0,x-2):min(xmax,x+2), 0] = 0.0
+                """
+                for x, y  in landmark_list:
+                    plt.plot(x, y, marker='o', color="r",markersize=12)
                 plt.imshow(temp)
-                plt.savefig("200X160_sample/noise{}.png".format(noise))
+                plt.savefig("gt.png",bbox_inches='tight')
  
   
     
@@ -360,25 +364,20 @@ if __name__ == "__main__":
     if args.pretrain == "True":
         subfolder = "pretrain-based-min/"
     else:
-        subfolder = "non_pretrain_dice/"
+        subfolder = "MICCAI2022/"
         
     resultFolder = args.tag
-    iteration = 229
+    iteration = 499
     #file folders================
-    #folders = ["base","PGD_25_post","PGD_10_post","PGD_40_post","SIMA_40_min","SIMA2_40_min","IMA_40_min_original","IMA_40_min","PGD_IMA"]
-    #folders = ["base","PGD_10","IMA_40_loss2Z_700","PGD_20"]
-    folders = ["base_dice0.5"]
-    #folders = ["base_400_320","PGD_20","PGD_15","PGD_10","PGD_5","IMA_20_3Z_R"]
-    #folders = ["base_400_320","PGD_40","PGD_20","PGD_10","PGD_5","IMA_40_3Z_R"]
-    #folders = ["base_400_320","PGD_15","PGD_10","PGD_5","IMA_15_3Z"]
-    #folders = ["PGD_5","IMA_40_mean"]
-    #folders = ["base_400_320"]
+
+    folders = ["STDDICE","SAT3","AMAT"]
+    folders = ["AMAT"]
     #========================
     import matplotlib.pyplot as plt
     #fig, ax = plt.subplots(3,2, figsize = (10,15))
     plt.figure(figsize = (10,15))
     cm = plt.get_cmap("gist_rainbow")
-    noises = [0,1,2,3,4,5,6,7,8,9,10,20,40]
+    noises = [0]
     #noises = [0,5,10,20,40]
     #noises = [0,10,20,40]
     #noises = [0]

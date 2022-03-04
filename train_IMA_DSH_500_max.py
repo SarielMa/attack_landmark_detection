@@ -44,7 +44,7 @@ def run_model_adv_reg(net, img, mask, offset_y, offset_x, guassian_mask, return_
 #
 def classify_model_std_output_reg(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask, threshold="2z"):
 
-    threshold1 = 1.0
+    threshold1 = 100000000.0
     threshold2 = 0.03576468830597853
     threshold3 = 0.02975115847345592
     de, ry, rx=l1_matric_dice(heatmap, guassian_mask, regression_y, offset_y, regression_x, offset_x, mask) 

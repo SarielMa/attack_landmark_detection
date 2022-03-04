@@ -11,3 +11,5 @@ dataset/
 *.yaml
 *.pdf
 *.pdf
+*.npy
+*.lnk
